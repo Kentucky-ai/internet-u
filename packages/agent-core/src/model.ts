@@ -24,9 +24,13 @@ export function resolveModel() {
   if (!modelId) {
     throw new Error("MODEL must include a non-empty model identifier.");
   }
-  // Preserve the original automatic router switch for existing .env files.
+  // A hosting AI gateway (Netlify AI Gateway) injects OPENAI_API_KEY plus
+  // OPENAI_BASE_URL, and its injected OpenRouter key only works through the
+  // gateway itself, so prefer the OpenAI path whenever a base URL is present.
+  // Otherwise preserve the original automatic router switch for .env files.
+  const gatewayOpenAI = !!process.env.OPENAI_API_KEY && !!process.env.OPENAI_BASE_URL;
   const provider = canonicalProvider(process.env.MODEL_PROVIDER || "") ||
-    (process.env.OPENROUTER_API_KEY ? "openrouter" : prefix || "openai");
+    (gatewayOpenAI ? "openai" : process.env.OPENROUTER_API_KEY ? "openrouter" : prefix || "openai");
   const keyNames: { [provider: string]: string | undefined } = {
     openai: "OPENAI_API_KEY",
     openrouter: "OPENROUTER_API_KEY",

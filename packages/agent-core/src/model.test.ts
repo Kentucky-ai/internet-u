@@ -16,6 +16,7 @@ function withEnv(config: NodeJS.ProcessEnv, callback: () => void) {
     "MODEL_PROVIDER",
     "MODEL",
     "OPENAI_API_KEY",
+    "OPENAI_BASE_URL",
     "OPENROUTER_API_KEY",
     "ANTHROPIC_API_KEY",
     "GOOGLE_API_KEY",
@@ -33,6 +34,17 @@ function resolvedChatModel() {
   }
   return { modelId: model.modelId, provider: model.provider };
 }
+
+test("gateway-injected OpenAI (base URL present) wins over an injected OpenRouter key", () => {
+  withEnv({
+    OPENAI_API_KEY: "sk-test",
+    OPENAI_BASE_URL: "https://gateway.example/v1",
+    OPENROUTER_API_KEY: "sk-or-test",
+    MODEL: "gpt-test",
+  }, () => {
+    assert.equal(resolveModel(), "openai:gpt-test");
+  });
+});
 
 test("explicit OpenAI wins over a configured OpenRouter key", () => {
   withEnv({

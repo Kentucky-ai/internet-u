@@ -2,6 +2,9 @@
   base = "apps/web"
   command = "npm run build"
   publish = ".next"
+  # The web app depends on the agent-core workspace package and the root
+  # lockfile; rebuild when any of those change, not only apps/web itself.
+  ignore = "git diff --quiet $CACHED_COMMIT_REF $COMMIT_REF -- . ../../packages ../../package.json ../../package-lock.json ../../netlify.toml"
 
 [[plugins]]
   package = "@netlify/plugin-nextjs"
