@@ -1,0 +1,45 @@
+// POST /api/search  { query, budget, currency }
+// Live product retrieval through OpenAI web search, returned as normalized JSON.
+// No key -> 503 and the client falls back to its demo catalog.
+const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+
+export default async (req: Request) => {
+  if (req.method !== "POST") return json({ error: "POST only" }, 405);
+  const key = process.env.OPENAI_API_KEY;
+  if (!key) return json({ error: "OPENAI_API_KEY not configured", fallback: true }, 503);
+  const { query = "sneakers", budget = 150, currency = "USD" } = await req.json().catch(() => ({}));
+
+  const prompt = `Search the web for currently available ${query} for sale online. Return 8 real products as a JSON object {"products":[...]}.
+Include a spread of prices: at least 5 at or under ${budget} ${currency} and at least 2 above it, several different brands and styles.
+Each product: {"id": string, "name": string, "brand": string, "price": number (${currency}), "currency": "${currency}", "productUrl": string, "imageUrl": string or null,
+"style": one of running|court|casual|trail|lifestyle|other, "comfortScore": 0-100, "styleScore": 0-100, "durabilityScore": 0-100 or null, "description": one sentence}.
+comfortScore/styleScore are your estimates from reviews; say so in a top-level "scoresNote" string. Output JSON only.`;
+
+  try {
+    const r = await fetch("https://api.openai.com/v1/responses", {
+      method: "POST",
+      headers: { authorization: `Bearer ${key}`, "content-type": "application/json" },
+      body: JSON.stringify({ model: process.env.OPENAI_SEARCH_MODEL || "gpt-4.1-mini", tools: [{ type: "web_search_preview" }], input: prompt }),
+      signal: AbortSignal.timeout(45_000),
+    });
+    if (!r.ok) return json({ error: `upstream ${r.status}`, detail: (await r.text()).slice(0, 300) }, 502);
+    const data = await r.json();
+    const text: string = data.output_text ?? data.output?.flatMap((o: any) => o.content ?? []).map((c: any) => c.text ?? "").join("") ?? "";
+    const m = text.match(/\{[\s\S]*\}/);
+    if (!m) return json({ error: "no JSON in model output" }, 502);
+    const parsed = JSON.parse(m[0]);
+    const note = typeof parsed.scoresNote === "string" ? parsed.scoresNote : "Comfort and style scores are model estimates from reviews, not measurements";
+    const products = (parsed.products ?? []).map((p: any, i: number) => ({
+      id: String(p.id ?? `live-${i}`), name: String(p.name ?? "Unknown"), brand: String(p.brand ?? "Unknown"),
+      price: Number(p.price), currency: String(p.currency ?? currency), productUrl: p.productUrl || undefined, imageUrl: p.imageUrl || undefined,
+      style: p.style || "other", comfortScore: num(p.comfortScore), styleScore: num(p.styleScore), durabilityScore: num(p.durabilityScore),
+      description: p.description || undefined, source: "live (web search)", scoresNote: note,
+    })).filter((p: any) => Number.isFinite(p.price) && p.price > 0);
+    return json({ products, provider: "OpenAI web search" });
+  } catch (e: any) {
+    return json({ error: e?.name === "TimeoutError" ? "upstream timeout" : String(e?.message ?? e) }, 502);
+  }
+};
+
+const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : undefined);
+export const config = { path: "/api/search" };
