@@ -1,0 +1,695 @@
+# Codex Build Prompt — Internet U Hackathon MVP
+
+You are the lead full-stack engineer for our hackathon project, **Internet U**.
+
+Your job is to inspect the existing repository, understand the current application, and rapidly turn it into a polished, working proof of concept that demonstrates an AI advocate acting according to a user’s own rules and priorities.
+
+We have approximately **90 minutes**, so prioritize a reliable, visually polished end-to-end demo over production-level complexity.
+
+---
+
+## 1. Product Vision
+
+**Internet U** is a user-aligned AI advocate for the internet.
+
+Instead of optimizing for advertisements, popularity, platform incentives, or generic recommendations, Internet U uses the user’s own:
+
+* Budget
+* Priorities
+* Preferences
+* Constraints
+* Non-negotiables
+* Privacy expectations
+* Explicit approvals
+
+The agent should explain *why* it recommends something, identify tradeoffs, clearly flag rule violations, and never perform consequential actions without user approval.
+
+For the MVP, demonstrate this through a sneaker-shopping experience.
+
+The core positioning is:
+
+> **Internet U gives users a customizable AI advocate that works across the internet according to their own priorities—not the priorities of platforms, advertisers, or default algorithms.**
+
+---
+
+## 2. First: Inspect the Existing Project
+
+Before changing anything:
+
+1. Inspect the repository structure.
+2. Identify the framework, package manager, entry points, routing, styling system, and existing components.
+3. Identify whether there is already:
+
+   * A working homepage
+   * A chat interface
+   * Product/search functionality
+   * API integration
+   * Authentication
+   * Netlify configuration
+   * Environment-variable handling
+   * OOF endpoints for authentication, authorization, or billing
+4. Run the existing application and inspect the current UI.
+5. Preserve useful existing functionality.
+6. Do not rewrite the entire project unless the existing code is unusable.
+7. Use the project’s existing conventions and dependencies wherever possible.
+
+If the repository has an existing design system, reuse it.
+
+If something is unclear, make the simplest reasonable implementation decision and continue. Do not stop to ask questions unless the project cannot run at all.
+
+---
+
+## 3. MVP Priorities
+
+Build these features in this order:
+
+### Must Have
+
+1. Polished personalized homepage.
+2. Dedicated **My Rules** page.
+3. Editable budget.
+4. Editable ranking priorities:
+
+   * Budget
+   * Comfort
+   * Style
+5. Chat interaction with the prompt:
+
+   * “Help me find sneakers.”
+6. Product recommendations based on the user profile.
+7. Live product/search data if an existing integration is available.
+8. Mocked fallback product data if live search is unavailable.
+9. Multiple recommendation perspectives:
+
+   * Overall match
+   * Best budget match
+   * Best comfort match
+   * Best style match
+10. Explanation panel showing:
+
+    * Why the item was recommended
+    * Which rules it satisfies
+    * Which rules it violates
+    * Unknown or missing information
+11. Editable priority sliders that trigger recommendation re-ranking.
+12. Explicit approval modal when the user attempts an action such as “Add to cart.”
+13. A visible indication that the agent will not take consequential action without approval.
+14. A working local/demo experience that can be deployed to Netlify.
+
+### Nice to Have If Time Allows
+
+* OOF authentication integration.
+* OOF authorization checks.
+* Persisting the profile per authenticated user.
+* A lightweight activity or decision history.
+* A “proposed profile update” after user feedback.
+* A connector interface for future social, work, calendar, or productivity integrations.
+
+### Explicitly Defer
+
+Do not spend significant time implementing:
+
+* Real checkout or payment execution.
+* Full shopping-cart integrations.
+* Broad social-media ingestion.
+* Background monitoring.
+* Autonomous purchasing.
+* Plugin marketplace functionality.
+* Complex billing flows.
+* Multi-user administration.
+* Automatic learning from every application.
+* A production-grade vector database.
+* Complex fine-tuning pipelines.
+
+If an OOF endpoint is already plug-and-play, integrate it cleanly. Otherwise, create a clear adapter/interface and a demo-safe fallback rather than blocking the MVP.
+
+---
+
+## 4. Required User Experience
+
+### Homepage
+
+Create a polished, minimalist, bento-style homepage.
+
+The visual hierarchy should include:
+
+* Header/navigation
+* Product identity: **Internet U**
+* Main message such as:
+
+  * “Your internet, working for you.”
+  * “An AI advocate guided by your rules.”
+* A summary of the user’s current rules
+* A budget card
+* Priority cards or bars
+* A “Start with a request” chat panel
+* A recent decision/recommendation area
+* A clear link to **My Rules**
+
+The homepage should feel like a personalized command center, not a generic chatbot.
+
+The chat window can be positioned in the lower-right or as a prominent central interaction panel, depending on the existing application layout.
+
+---
+
+## 5. My Rules Page
+
+Create a dedicated page or route called **My Rules**.
+
+It should allow the user to edit:
+
+### Hard Constraints
+
+* Maximum budget
+* Currency
+* Optional shoe size
+* Brands to avoid
+* Styles to avoid
+* Other non-negotiables
+
+### Adjustable Priorities
+
+* Budget
+* Comfort
+* Style
+
+Use sliders, controls, or another intuitive interface.
+
+The UI should make it obvious that:
+
+* Hard constraints are rules the agent must not violate.
+* Priority weights determine how the agent ranks acceptable options.
+* Changing priorities changes the recommendation results.
+
+Use a simple default profile such as:
+
+```json
+{
+  "id": "demo-user",
+  "budget": 150,
+  "currency": "USD",
+  "priorities": {
+    "budget": 60,
+    "comfort": 25,
+    "style": 15
+  },
+  "preferences": {
+    "shoeSize": null,
+    "styles": [],
+    "brands": [],
+    "avoid": []
+  }
+}
+```
+
+Normalize or validate priority values if necessary. The implementation may either use percentages totaling 100 or normalize the values mathematically.
+
+The profile should be the source of truth for recommendations.
+
+For the MVP, use a local JSON-backed state, browser state, or a simple profile service depending on the existing project architecture. Keep the data model easy to replace with authenticated persistence later.
+
+---
+
+## 6. Sneaker Recommendation Flow
+
+When the user enters:
+
+> Help me find sneakers.
+
+The application should:
+
+1. Load the current user profile.
+2. Identify whether essential information is missing.
+3. Ask a concise follow-up question only if needed.
+4. Search live product data if possible.
+5. Fall back to realistic mock sneaker data if live search fails.
+6. Apply hard constraints.
+7. Rank valid products according to the user’s priorities.
+8. Display several recommendation perspectives.
+9. Explain the reasoning behind each result.
+10. Clearly identify rejected or over-budget products.
+11. Allow the user to change priority sliders.
+12. Re-rank recommendations immediately after the priorities change.
+
+Do not describe one item as universally “the best sneaker.”
+
+Use language such as:
+
+* “Best match for your current priorities”
+* “Best budget fit”
+* “Best comfort tradeoff”
+* “Best style match”
+* “This option ranks highly because…”
+
+---
+
+## 7. Recommendation Data Model
+
+Use a normalized product shape similar to:
+
+```ts
+type Product = {
+  id: string;
+  name: string;
+  brand: string;
+  price: number;
+  currency: string;
+  imageUrl?: string;
+  productUrl?: string;
+  comfortScore?: number;
+  styleScore?: number;
+  durabilityScore?: number;
+  description?: string;
+  source?: string;
+};
+```
+
+If live product data does not contain comfort or style scores, derive clearly labeled demo scores or use deterministic heuristics. Do not pretend that unsupported scores are authoritative.
+
+For mock data, include a range of products:
+
+* Several under budget
+* At least one over budget
+* Different brands
+* Different styles
+* Different price points
+* Different comfort/style tradeoffs
+
+Make sure the demo visibly proves that hard constraints matter.
+
+---
+
+## 8. Ranking Logic
+
+Implement ranking as a separate, testable function.
+
+The ranking system should:
+
+1. Reject products that violate hard constraints such as budget.
+2. Calculate or normalize product attributes.
+3. Apply the user’s adjustable priority weights.
+4. Produce an overall score.
+5. Produce separate views for:
+
+   * Overall
+   * Budget
+   * Comfort
+   * Style
+6. Return explanation metadata.
+
+Example conceptual scoring:
+
+```ts
+overallScore =
+  budgetWeight * budgetScore +
+  comfortWeight * comfortScore +
+  styleWeight * styleScore;
+```
+
+The exact scoring method can be simplified, but it must be deterministic and understandable.
+
+Return information such as:
+
+```ts
+{
+  product,
+  score,
+  matchedRules: [],
+  violatedRules: [],
+  tradeoffs: [],
+  unknowns: [],
+  explanation: ""
+}
+```
+
+Do not allow an over-budget product to appear as an acceptable recommendation merely because it has a high style or comfort score.
+
+If showing rejected products, place them in a separate section labeled something like:
+
+* “Rejected by your rules”
+* “Does not meet your constraints”
+* “Over budget”
+
+---
+
+## 9. AI/LLM Integration
+
+If the existing project already has an LLM integration, connect it to the recommendation flow.
+
+The LLM should receive:
+
+* User request
+* Current user profile
+* User priority weights
+* Retrieved product data
+* Ranking results
+* Hard constraints
+* Missing information
+
+The LLM should generate:
+
+* A concise conversational response
+* Recommendation summaries
+* Tradeoff explanations
+* Clarifying questions when necessary
+* Approval-gate language
+
+Use structured JSON output wherever practical.
+
+The LLM must follow these rules:
+
+```text
+Use the user profile as the source of truth.
+
+Ask concise questions when critical information is missing.
+
+Rank products according to the user’s adjustable priorities.
+
+Explain tradeoffs instead of declaring one universal best option.
+
+Clearly flag products that violate hard constraints.
+
+Never change the user’s preferences without approval.
+
+Never perform a consequential action without explicit user approval.
+
+Be transparent about uncertainty and missing information.
+
+Do not claim to have completed an action unless the action actually occurred.
+```
+
+If API keys, network access, or deployment configuration are unavailable, implement a deterministic local fallback so the full demo still works.
+
+The application must not depend entirely on a live LLM call to demonstrate the concept.
+
+---
+
+## 10. Explanation UI
+
+Each recommendation should support a **Why this?** interaction.
+
+When clicked, show a modal, drawer, popover, or expanded panel containing:
+
+* “Why this was recommended”
+* Current user priorities
+* Rules satisfied
+* Rules not applicable
+* Tradeoffs
+* Unknown information
+* A short plain-language explanation
+
+Example:
+
+```text
+Why this was recommended
+
+This sneaker is a strong match because it is under your $150 budget
+and scores well for comfort.
+
+Tradeoff:
+Its style score is lower than some more expensive options.
+
+Your rules:
+✓ Under budget
+✓ Fits your current comfort priority
+✓ No excluded brand detected
+
+Unknown:
+Long-term durability was not independently verified.
+```
+
+The explanation must refer to the user’s current rules rather than generic product popularity.
+
+---
+
+## 11. Priority Editing Behavior
+
+When the user changes the priority sliders:
+
+1. Update the profile state.
+2. Recalculate recommendation scores.
+3. Re-render the recommendation cards.
+4. Update the explanation text.
+5. Make the change visually obvious.
+6. Avoid requiring a full page reload.
+
+For example:
+
+* Increasing Budget should favor lower-priced products.
+* Increasing Comfort should favor products with higher comfort scores.
+* Increasing Style should favor products with higher style scores.
+
+If an LLM is used for explanations, regenerate explanations after the ranking update, but preserve a deterministic local explanation fallback.
+
+---
+
+## 12. Approval Gate
+
+When the user clicks an action such as:
+
+* Add to cart
+* Save this choice
+* Prepare purchase
+* Continue with this option
+
+Do not perform the action immediately.
+
+Open an approval modal that says something like:
+
+```text
+Approval required
+
+I can prepare this action, but I need your explicit approval
+before continuing.
+
+Selected item:
+[product name]
+
+Price:
+[price]
+
+Rules considered:
+[summary]
+
+Do you approve this action?
+```
+
+Include clear actions:
+
+* Cancel
+* Approve
+
+For the MVP, approval may simply produce a visible confirmation such as:
+
+> “Approved for demo purposes. No real purchase was made.”
+
+Never imply that a real purchase, checkout, or external action occurred unless an actual integration completed it.
+
+---
+
+## 13. OOF Integration
+
+Inspect the repository for existing OOF endpoints or integration code.
+
+OOF may provide:
+
+* Authentication
+* Authorization
+* Billing
+
+Use the following approach:
+
+1. Reuse existing OOF utilities if they are already configured.
+2. Integrate authentication if it can be done quickly without destabilizing the app.
+3. Use authorization checks around profile access or future action execution if available.
+4. Do not spend the MVP’s limited time implementing billing unless it is already functional.
+5. If OOF is not ready, create a clean adapter boundary and use a demo user.
+
+Do not hard-code secrets.
+
+Use environment variables and document any required variables in `.env.example`.
+
+---
+
+## 14. Future Connector Architecture
+
+Create lightweight interfaces or modules that make future integrations possible without implementing them fully.
+
+The conceptual workflow should be:
+
+```text
+User request
+→ Identify goal
+→ Load approved user profile
+→ Determine missing information
+→ Ask permission for required data sources
+→ Call approved connectors
+→ Normalize returned data
+→ Apply user rules
+→ Rank options and tradeoffs
+→ Explain reasoning
+→ Request explicit approval
+→ Execute approved action
+→ Record outcome
+→ Propose profile update
+→ Ask for approval before changing profile
+```
+
+Design future connectors around explicit permissions and limited scopes.
+
+Do not silently ingest data from social, work, calendar, or productivity applications.
+
+Potential future connector interface:
+
+```ts
+type Connector = {
+  id: string;
+  name: string;
+  description: string;
+  requiredPermissions: string[];
+  connect(): Promise<void>;
+  disconnect(): Promise<void>;
+  fetchData(scope: string): Promise<unknown>;
+};
+```
+
+This is an architectural boundary, not a requirement to implement live social integrations now.
+
+---
+
+## 15. Visual Design Requirements
+
+The application should look polished enough for a live hackathon judging demo.
+
+Prioritize:
+
+* Strong typography
+* Clear spacing
+* Responsive layout
+* Bento-style cards
+* Attractive sneaker/product cards
+* Clear budget indicators
+* Priority visualizations
+* Good empty/loading/error states
+* Consistent buttons and controls
+* Clear distinction between:
+
+  * User rules
+  * Recommendations
+  * Explanations
+  * Rejected options
+  * Approval-required actions
+
+Avoid a generic unstyled dashboard.
+
+The design should communicate:
+
+* Personal control
+* Transparency
+* Trust
+* Customization
+* Human approval
+* AI advocacy
+
+Ensure the experience works on a laptop-sized screen and does not break on mobile.
+
+---
+
+## 16. Reliability Requirements
+
+The demo must continue working if:
+
+* Live product search fails
+* An LLM API key is missing
+* A network request fails
+* OOF is unavailable
+* Product images fail to load
+
+Implement:
+
+* Mock product fallback
+* Local deterministic ranking
+* Graceful error states
+* Loading states
+* Empty states
+* No uncaught console errors
+* No fake success messages for failed actions
+
+Do not block the entire application on optional integrations.
+
+---
+
+## 17. Testing and Verification
+
+Before finishing:
+
+1. Run the project’s available lint, typecheck, and test commands.
+2. Fix build errors.
+3. Verify all routes/pages load.
+4. Verify the My Rules controls update state.
+5. Verify changing priority weights changes ranking.
+6. Verify over-budget products are rejected.
+7. Verify the “Why this?” explanation works.
+8. Verify the approval modal opens.
+9. Verify approval does not claim a real purchase.
+10. Verify fallback data works without API keys.
+11. Verify the production build succeeds.
+12. Verify Netlify deployment configuration if present.
+
+If tests do not exist, add lightweight tests for the ranking function and hard-constraint behavior.
+
+---
+
+## 18. Deliverables
+
+At the end of the build:
+
+1. Working application in the existing repository.
+2. Polished homepage.
+3. Working My Rules page.
+4. Working sneaker recommendation flow.
+5. Deterministic ranking logic.
+6. Live search integration if feasible.
+7. Mock fallback data.
+8. LLM integration or a clean LLM adapter with fallback.
+9. Explanation UI.
+10. Approval gate.
+11. OOF integration or adapter boundary if available.
+12. `.env.example` with required variables.
+13. README updates with:
+
+    * How to run locally
+    * Available environment variables
+    * How live search works
+    * How fallback mode works
+    * How to deploy to Netlify
+    * What is mocked
+    * What is intentionally deferred
+
+---
+
+## 19. Demo Acceptance Criteria
+
+The build is successful if we can demonstrate this exact sequence:
+
+1. Open Internet U homepage.
+2. See a personalized command center.
+3. Open **My Rules**.
+4. Set the budget to `$150`.
+5. Set priorities for budget, comfort, and style.
+6. Return to the homepage.
+7. Enter: “Help me find sneakers.”
+8. See recommendations based on those rules.
+9. See at least one product rejected for being over budget.
+10. Open “Why this?” on a recommendation.
+11. See an explanation tied to the user’s rules.
+12. Increase the style priority.
+13. See recommendations re-rank.
+14. Click an action such as “Add to cart.”
+15. See an explicit approval modal.
+16. Approve the demo action.
+17. See a transparent confirmation that no real purchase occurred.
+
+Build this end-to-end flow first. Everything else is secondary.
+
+Start by inspecting the repository and then implement the highest-priority working slice immediately. Do not spend the majority of the time writing documentation before the application works.

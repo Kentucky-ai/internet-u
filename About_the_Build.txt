@@ -1,0 +1,19 @@
+# Internet U — Your Internet, Working for You
+
+The internet is full of algorithms designed around someone else’s interests: engagement, advertising, conversions, and sales. **Internet U** flips that relationship by giving the user an AI advocate that works according to *their* priorities.
+
+Internet U is a personalized AI layer that learns what matters to each user—budget, preferences, priorities, constraints, and values—and uses that information to help them navigate the internet. Rather than simply recommending whatever is most popular or profitable, Internet U acts as an **active skeptic on the user’s behalf**: questioning recommendations, identifying conflicts, surfacing tradeoffs, and asking, *“Is this actually right for you?”*
+
+For our hackathon prototype, we demonstrate this through personalized sneaker shopping. A user can establish rules such as a $150 budget and prioritize budget, comfort, or style. Internet U searches available products, filters options against the user’s constraints, and ranks them according to the user’s chosen priorities.
+
+The agent explains **why** it recommends something, what tradeoffs exist, and why it rejected alternatives. If an option exceeds the user's budget, Internet U doesn't simply present it as a recommendation—it challenges it on the user's behalf.
+
+Users remain in control throughout the process. They can adjust their priorities, see recommendations change in real time, and must explicitly approve consequential actions before Internet U proceeds.
+
+The long-term vision extends beyond shopping. Internet U could connect with the applications people already use—email, calendar, social platforms, productivity tools, and work software—to become a persistent personal advocate across the digital world.
+
+The core idea is simple:
+
+> **The internet has algorithms optimized for what platforms want. Internet U has an advocate optimized for what you want.**
+
+Internet U isn't trying to replace the internet. **It's putting someone on your side while you use it.**
