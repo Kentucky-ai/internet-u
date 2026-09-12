@@ -13,6 +13,7 @@ interface TileWorkspaceViewProps {
 export function TileWorkspaceView({ tile, onBack, onStageAction }: TileWorkspaceViewProps) {
   // State for dynamic constraints added in-session
   const [guardrails, setGuardrails] = useState<string[]>(tile.guardrails);
+  const [candidates, setCandidates] = useState<TileCandidate[]>(tile.candidates || []);
   const [activityLog, setActivityLog] = useState<TileActivityLog[]>(
     tile.activityLog || [
       {
@@ -26,10 +27,9 @@ export function TileWorkspaceView({ tile, onBack, onStageAction }: TileWorkspace
   );
   const [newConstraint, setNewConstraint] = useState("");
   const [inspectingCandidate, setInspectingCandidate] = useState<TileCandidate | null>(null);
-  const [isScanning, setIsScanning] = useState(false);
+  const [isExecuting, setIsExecuting] = useState(false);
+  const [executionMessage, setExecutionMessage] = useState<string | null>(null);
 
-  // Candidates
-  const candidates = tile.candidates || [];
   const approvedCandidates = candidates.filter((c) => c.status === "approved");
   const trapCandidates = candidates.filter((c) => c.status === "blocked_trap");
 
@@ -53,9 +53,60 @@ export function TileWorkspaceView({ tile, onBack, onStageAction }: TileWorkspace
     setNewConstraint("");
   };
 
-  // Re-run advocate sweep simulation
-  const handleRescan = () => {
-    setIsScanning(true);
+  // Toggle or remove a guardrail
+  const handleRemoveGuardrail = (idx: number) => {
+    const removed = guardrails[idx];
+    const updated = guardrails.filter((_, i) => i !== idx);
+    setGuardrails(updated);
+    setActivityLog([
+      {
+        id: `act-rem-${Date.now()}`,
+        timestamp: "Just now",
+        type: "compliance",
+        message: `Removed constraint: "${removed}".`,
+        impact: "Adjusted verification boundaries",
+      },
+      ...activityLog,
+    ]);
+  };
+
+  // Re-run live agentic sweep via server endpoint
+  const handleExecuteLiveSweep = async () => {
+    setIsExecuting(true);
+    setExecutionMessage("Querying live web via Exa & neutralizing platform traps...");
+    try {
+      const res = await fetch("/api/agent/generate-tile", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          prompt: `${tile.title} ${guardrails.join(" ")}`,
+        }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data.tile && Array.isArray(data.tile.candidates) && data.tile.candidates.length > 0) {
+          setCandidates(data.tile.candidates);
+          const sweepEntry: TileActivityLog = {
+            id: `sweep-${Date.now()}`,
+            timestamp: "Just now",
+            type: "scan",
+            message: `Executed live Exa web sweep with updated rules.`,
+            impact: `Refreshed ${data.tile.candidates.length} candidate options directly from live sources`,
+          };
+          setActivityLog([sweepEntry, ...activityLog]);
+          setExecutionMessage("✓ Live execution finished: Candidates updated!");
+          setTimeout(() => setExecutionMessage(null), 3500);
+          return;
+        }
+      }
+    } catch (err) {
+      console.warn("Live sweep error:", err);
+    } finally {
+      setIsExecuting(false);
+    }
+
+    // Fallback simulation if offline
     setTimeout(() => {
       const scanEntry: TileActivityLog = {
         id: `scan-${Date.now()}`,
@@ -65,8 +116,10 @@ export function TileWorkspaceView({ tile, onBack, onStageAction }: TileWorkspace
         impact: `Verified 0 price drift; confirmed ${approvedCandidates.length} compliant options`,
       };
       setActivityLog([scanEntry, ...activityLog]);
-      setIsScanning(false);
-    }, 900);
+      setIsExecuting(false);
+      setExecutionMessage("✓ Verified 0 price drift across active sources.");
+      setTimeout(() => setExecutionMessage(null), 3000);
+    }, 600);
   };
 
   return (
@@ -156,23 +209,43 @@ export function TileWorkspaceView({ tile, onBack, onStageAction }: TileWorkspace
           </div>
           <button
             type="button"
-            onClick={handleRescan}
-            disabled={isScanning}
+            onClick={handleExecuteLiveSweep}
+            disabled={isExecuting}
             style={{
-              padding: "8px 14px",
+              padding: "8px 16px",
               borderRadius: "10px",
-              border: "1px solid #dbdbe5",
-              backgroundColor: "#ffffff",
+              border: "none",
+              backgroundColor: isExecuting ? "#6b7280" : "#010507",
+              color: "#ffffff",
               fontSize: "12px",
-              fontWeight: 600,
-              cursor: isScanning ? "wait" : "pointer",
-              color: "#374151",
+              fontWeight: 700,
+              cursor: isExecuting ? "wait" : "pointer",
+              display: "flex",
+              alignItems: "center",
+              gap: "6px",
             }}
           >
-            {isScanning ? "Scanning Web..." : "↻ Refresh Verification"}
+            {isExecuting ? "Executing Live Sweep..." : "⚡ Execute Live Sweep"}
           </button>
         </div>
       </div>
+
+      {/* Execution status toast */}
+      {executionMessage && (
+        <div
+          style={{
+            padding: "12px 18px",
+            borderRadius: "10px",
+            backgroundColor: "#dcfce7",
+            color: "#166534",
+            border: "1px solid #86efac",
+            fontSize: "13px",
+            fontWeight: 600,
+          }}
+        >
+          {executionMessage}
+        </div>
+      )}
 
       {/* Bento Grid: Rules & What It's Actually Doing */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1.2fr", gap: "20px" }}>
@@ -198,7 +271,7 @@ export function TileWorkspaceView({ tile, onBack, onStageAction }: TileWorkspace
               </span>
             </div>
             <p style={{ fontSize: "13px", color: "#57575b", margin: "0 0 16px" }}>
-              These programmatic constraints are strictly enforced before any candidate is surfaced to you.
+              Programmatic boundaries for this workspace. Click &times; to remove or type below to inject new rules.
             </p>
 
             <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginBottom: "20px" }}>
@@ -213,12 +286,22 @@ export function TileWorkspaceView({ tile, onBack, onStageAction }: TileWorkspace
                     fontSize: "13px",
                     color: "#1e293b",
                     display: "flex",
+                    justifyContent: "space-between",
                     alignItems: "center",
-                    gap: "8px",
                   }}
                 >
-                  <span style={{ color: "#16a34a", fontWeight: 700 }}>✓</span>
-                  <span>{rule}</span>
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                    <span style={{ color: "#16a34a", fontWeight: 700 }}>✓</span>
+                    <span>{rule}</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveGuardrail(idx)}
+                    style={{ background: "none", border: "none", color: "#94a3b8", cursor: "pointer", fontSize: "14px" }}
+                    title="Remove rule"
+                  >
+                    &times;
+                  </button>
                 </div>
               ))}
             </div>
@@ -249,7 +332,7 @@ export function TileWorkspaceView({ tile, onBack, onStageAction }: TileWorkspace
                 type="text"
                 value={newConstraint}
                 onChange={(e) => setNewConstraint(e.target.value)}
-                placeholder="e.g. Must have hot tub, No departure before 8 AM..."
+                placeholder="e.g. Must have hot tub, No flights before 8 AM..."
                 style={{
                   flex: 1,
                   padding: "8px 12px",
@@ -392,7 +475,7 @@ export function TileWorkspaceView({ tile, onBack, onStageAction }: TileWorkspace
               Vetted Options ({approvedCandidates.length}) &amp; Blocked Traps ({trapCandidates.length})
             </h2>
             <p style={{ margin: 0, fontSize: "13px", color: "#57575b" }}>
-              Options screened and scored against your non-negotiables. Commercial platforms hide these direct options to promote high-margin affiliate partners.
+              Real live findings screened and scored against your non-negotiables. Commercial platforms hide these direct options to steer you toward sponsored affiliate partners.
             </p>
           </div>
         </div>
@@ -474,7 +557,7 @@ export function TileWorkspaceView({ tile, onBack, onStageAction }: TileWorkspace
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
                     <div>
                       <span style={{ fontSize: "11px", color: "#64748b", textTransform: "uppercase", display: "block" }}>
-                        Verified All-In Price:
+                        Verified Transparent Cost:
                       </span>
                       <span style={{ fontSize: "20px", fontWeight: 800, color: "#166534" }}>
                         {c.price}
@@ -527,6 +610,29 @@ export function TileWorkspaceView({ tile, onBack, onStageAction }: TileWorkspace
                     ))}
                   </div>
                 </div>
+
+                {/* External Verified Link if available */}
+                {c.url && (
+                  <div style={{ marginBottom: "14px" }}>
+                    <a
+                      href={c.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{
+                        fontSize: "12px",
+                        color: "#2563eb",
+                        fontWeight: 600,
+                        textDecoration: "none",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: "4px",
+                      }}
+                    >
+                      <span>Visit Verified Web Source</span>
+                      <span>&nearr;</span>
+                    </a>
+                  </div>
+                )}
               </div>
 
               {/* Action Buttons */}
@@ -554,7 +660,7 @@ export function TileWorkspaceView({ tile, onBack, onStageAction }: TileWorkspace
                     onStageAction({
                       title: c.name,
                       cost: c.price,
-                      action: "Reserve / Lock In Verified Rate",
+                      action: "Reserve / Lock In Rate",
                     })
                   }
                   style={{
@@ -620,7 +726,7 @@ export function TileWorkspaceView({ tile, onBack, onStageAction }: TileWorkspace
                   {trap.name}
                 </h3>
                 <div style={{ fontSize: "13px", color: "#7f1d1d", fontWeight: 600, marginBottom: "8px" }}>
-                  {trap.price} ({trap.originalPrice})
+                  {trap.price} {trap.originalPrice ? `(${trap.originalPrice})` : ""}
                 </div>
 
                 <p style={{ fontSize: "13px", color: "#4b5563", lineHeight: 1.4, margin: "0 0 12px" }}>

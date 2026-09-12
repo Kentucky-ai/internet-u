@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import {
   UserProfile,
+  SovereignKnowledgeRule,
   loadUserProfile,
   saveUserProfile,
   resetUserProfile,
@@ -12,8 +13,9 @@ import {
 
 export default function RulesPage() {
   const [profile, setProfile] = useState<UserProfile>(DEFAULT_USER_PROFILE);
+  const [newRuleText, setNewRuleText] = useState("");
+  const [newRuleCategory, setNewRuleCategory] = useState<SovereignKnowledgeRule["category"]>("General");
   const [avoidBrandInput, setAvoidBrandInput] = useState("");
-  const [nonNegInput, setNonNegInput] = useState("");
   const [savedNotice, setSavedNotice] = useState(false);
 
   useEffect(() => {
@@ -40,58 +42,78 @@ export default function RulesPage() {
     setTimeout(() => setSavedNotice(false), 3000);
   };
 
+  // Toggle a knowledge rule
+  const toggleKnowledgeRule = (id: string) => {
+    const updatedRules = (profile.knowledgeRules || []).map((r) =>
+      r.id === id ? { ...r, enabled: !r.enabled } : r
+    );
+    const updated = { ...profile, knowledgeRules: updatedRules };
+    setProfile(updated);
+    saveUserProfile(updated);
+  };
+
+  // Delete a knowledge rule
+  const deleteKnowledgeRule = (id: string) => {
+    const updatedRules = (profile.knowledgeRules || []).filter((r) => r.id !== id);
+    const updated = { ...profile, knowledgeRules: updatedRules };
+    setProfile(updated);
+    saveUserProfile(updated);
+  };
+
+  // Add new knowledge rule
+  const handleAddKnowledgeRule = (e: React.FormEvent) => {
+    e.preventDefault();
+    const text = newRuleText.trim();
+    if (!text) return;
+
+    const newRule: SovereignKnowledgeRule = {
+      id: `kb-${Date.now()}`,
+      category: newRuleCategory,
+      rule: text,
+      type: "hard_constraint",
+      enabled: true,
+    };
+
+    const updatedRules = [...(profile.knowledgeRules || []), newRule];
+    const updated = { ...profile, knowledgeRules: updatedRules };
+    setProfile(updated);
+    saveUserProfile(updated);
+    setNewRuleText("");
+  };
+
+  // Avoid brands
   const addAvoidBrand = (e: React.FormEvent) => {
     e.preventDefault();
     const brand = avoidBrandInput.trim();
     if (!brand) return;
     if (!profile.preferences.avoidBrands.some((b) => b.toLowerCase() === brand.toLowerCase())) {
-      setProfile({
+      const updated = {
         ...profile,
         preferences: {
           ...profile.preferences,
           avoidBrands: [...profile.preferences.avoidBrands, brand],
         },
-      });
+      };
+      setProfile(updated);
+      saveUserProfile(updated);
     }
     setAvoidBrandInput("");
   };
 
   const removeAvoidBrand = (brand: string) => {
-    setProfile({
+    const updated = {
       ...profile,
       preferences: {
         ...profile.preferences,
         avoidBrands: profile.preferences.avoidBrands.filter((b) => b !== brand),
       },
-    });
-  };
-
-  const addNonNegotiable = (e: React.FormEvent) => {
-    e.preventDefault();
-    const text = nonNegInput.trim();
-    if (!text) return;
-    setProfile({
-      ...profile,
-      preferences: {
-        ...profile.preferences,
-        nonNegotiables: [...profile.preferences.nonNegotiables, text],
-      },
-    });
-    setNonNegInput("");
-  };
-
-  const removeNonNegotiable = (idx: number) => {
-    setProfile({
-      ...profile,
-      preferences: {
-        ...profile.preferences,
-        nonNegotiables: profile.preferences.nonNegotiables.filter((_, i) => i !== idx),
-      },
-    });
+    };
+    setProfile(updated);
+    saveUserProfile(updated);
   };
 
   return (
-    <main className="ck-workspace" style={{ maxWidth: "1000px", margin: "0 auto", padding: "40px 24px" }}>
+    <main style={{ maxWidth: "1000px", margin: "0 auto", padding: "40px 24px", minHeight: "100vh" }}>
       {/* Top Bar */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "32px" }}>
         <div>
@@ -102,34 +124,40 @@ export default function RulesPage() {
               alignItems: "center",
               gap: "6px",
               fontSize: "13px",
+              fontWeight: 600,
               color: "#57575b",
               textDecoration: "none",
               marginBottom: "8px",
-              fontWeight: 500,
             }}
           >
-            &larr; Back to Command Center
+            &larr; Return to Portal Canvas
           </Link>
-          <h1 style={{ fontSize: "32px", fontWeight: 700, margin: 0, letterSpacing: "-0.03em" }}>
-            My Rules &amp; Advocacy Guardrails
+          <h1 style={{ fontSize: "28px", fontWeight: 800, margin: 0, color: "#010507", letterSpacing: "-0.03em" }}>
+            Sovereign Knowledge Base &amp; Rules
           </h1>
-          <p style={{ color: "#57575b", margin: "6px 0 0", fontSize: "15px" }}>
-            Define the non-negotiable boundaries and ranking weights your AI advocate uses across the web.
+          <p style={{ margin: "6px 0 0", fontSize: "14px", color: "#57575b" }}>
+            Your personal AI advocate enforces these universal rules and knowledge preferences across every tile you create.
           </p>
         </div>
-        <div style={{ display: "flex", gap: "10px" }}>
+
+        <div style={{ display: "flex", gap: "12px", alignItems: "center" }}>
+          {savedNotice && (
+            <span style={{ fontSize: "13px", fontWeight: 600, color: "#166534", backgroundColor: "#dcfce7", padding: "6px 12px", borderRadius: "8px" }}>
+              ✓ Knowledge Saved Live
+            </span>
+          )}
           <button
             type="button"
             onClick={handleReset}
             style={{
-              padding: "10px 18px",
+              padding: "10px 16px",
               borderRadius: "10px",
-              backgroundColor: "#f4f4f5",
-              color: "#374151",
               border: "1px solid #dbdbe5",
+              backgroundColor: "#ffffff",
               fontSize: "13px",
-              fontWeight: 500,
+              fontWeight: 600,
               cursor: "pointer",
+              color: "#57575b",
             }}
           >
             Reset Defaults
@@ -138,176 +166,325 @@ export default function RulesPage() {
             type="button"
             onClick={handleSave}
             style={{
-              padding: "10px 24px",
+              padding: "10px 20px",
               borderRadius: "10px",
+              border: "none",
               backgroundColor: "#010507",
               color: "#ffffff",
-              border: "none",
               fontSize: "13px",
               fontWeight: 600,
               cursor: "pointer",
             }}
           >
-            Save Rules
+            Save Changes
           </button>
         </div>
       </div>
 
-      {savedNotice && (
+      <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
+        {/* Card 1: Sovereign Knowledge Rules */}
         <div
           style={{
-            padding: "12px 18px",
-            backgroundColor: "#dcfce7",
-            color: "#166534",
-            borderRadius: "10px",
-            fontSize: "14px",
-            fontWeight: 500,
-            marginBottom: "24px",
-            display: "flex",
-            alignItems: "center",
-            gap: "8px",
-          }}
-        >
-          <span>✓</span>
-          <span>Your rules have been saved and applied to all future recommendations!</span>
-        </div>
-      )}
-
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "24px" }}>
-        {/* Left Column: Hard Constraints */}
-        <section
-          style={{
             background: "#ffffff",
-            borderRadius: "16px",
+            borderRadius: "18px",
             border: "1px solid #dbdbe5",
             padding: "28px",
-            boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
+            boxShadow: "0 2px 8px rgba(0,0,0,0.02)",
           }}
         >
-          <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "8px" }}>
-            <span
-              style={{
-                fontSize: "11px",
-                fontWeight: 700,
-                textTransform: "uppercase",
-                letterSpacing: "0.05em",
-                backgroundColor: "#fee2e2",
-                color: "#991b1b",
-                padding: "2px 8px",
-                borderRadius: "999px",
-              }}
-            >
-              Strict Enforcement
-            </span>
-            <h2 style={{ fontSize: "20px", fontWeight: 600, margin: 0, color: "#010507" }}>
-              Hard Constraints
-            </h2>
-          </div>
-          <p style={{ fontSize: "13px", color: "#57575b", margin: "0 0 20px" }}>
-            The advocate <strong>strictly blocks</strong> any product violating these rules, no matter how hard an algorithm pushes it.
-          </p>
-
-          {/* Budget */}
-          <div style={{ marginBottom: "20px" }}>
-            <label
-              htmlFor="budget-input"
-              style={{ display: "block", fontSize: "13px", fontWeight: 600, color: "#010507", marginBottom: "6px" }}
-            >
-              Maximum Budget Cap ({profile.currency})
-            </label>
-            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-              <span style={{ fontSize: "16px", fontWeight: 600, color: "#57575b" }}>$</span>
-              <input
-                id="budget-input"
-                type="number"
-                min="10"
-                max="5000"
-                value={profile.budget}
-                onChange={(e) => setProfile({ ...profile, budget: parseFloat(e.target.value) || 0 })}
-                style={{
-                  padding: "8px 12px",
-                  borderRadius: "8px",
-                  border: "1px solid #dbdbe5",
-                  fontSize: "15px",
-                  fontWeight: 600,
-                  width: "120px",
-                }}
-              />
-              <span style={{ fontSize: "12px", color: "#57575b" }}>
-                Products over this price are immediately rejected.
-              </span>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
+            <div>
+              <h2 style={{ fontSize: "18px", fontWeight: 700, margin: "0 0 4px", color: "#010507" }}>
+                Active Sovereign Knowledge ({profile.knowledgeRules?.length || 0})
+              </h2>
+              <p style={{ margin: 0, fontSize: "13px", color: "#57575b" }}>
+                These non-negotiables are automatically fed into every agentic search and workspace generation.
+              </p>
             </div>
           </div>
 
-          {/* Shoe Size */}
-          <div style={{ marginBottom: "20px" }}>
-            <label
-              htmlFor="size-input"
-              style={{ display: "block", fontSize: "13px", fontWeight: 600, color: "#010507", marginBottom: "6px" }}
-            >
-              Preferred Shoe Size
-            </label>
-            <input
-              id="size-input"
-              type="text"
-              value={profile.preferences.shoeSize || ""}
-              onChange={(e) =>
-                setProfile({
-                  ...profile,
-                  preferences: { ...profile.preferences, shoeSize: e.target.value },
-                })
-              }
-              placeholder="e.g. 10.5 US"
-              style={{
-                padding: "8px 12px",
-                borderRadius: "8px",
-                border: "1px solid #dbdbe5",
-                fontSize: "14px",
-                width: "140px",
-              }}
-            />
-          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: "10px", marginBottom: "24px" }}>
+            {(profile.knowledgeRules || []).map((rule) => (
+              <div
+                key={rule.id}
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  padding: "14px 16px",
+                  borderRadius: "12px",
+                  backgroundColor: rule.enabled ? "#f8fafc" : "#f1f5f9",
+                  border: rule.enabled ? "1px solid #e2e8f0" : "1px dashed #cbd5e1",
+                  opacity: rule.enabled ? 1 : 0.6,
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: "12px", flex: 1 }}>
+                  <span
+                    style={{
+                      fontSize: "11px",
+                      fontWeight: 700,
+                      textTransform: "uppercase",
+                      padding: "2px 8px",
+                      borderRadius: "6px",
+                      backgroundColor:
+                        rule.category === "Finance"
+                          ? "#dcfce7"
+                          : rule.category === "Privacy"
+                          ? "#fee2e2"
+                          : rule.category === "Travel"
+                          ? "#e0e7ff"
+                          : "#f3f4f6",
+                      color:
+                        rule.category === "Finance"
+                          ? "#166534"
+                          : rule.category === "Privacy"
+                          ? "#991b1b"
+                          : rule.category === "Travel"
+                          ? "#4338ca"
+                          : "#374151",
+                    }}
+                  >
+                    {rule.category}
+                  </span>
+                  <span style={{ fontSize: "14px", color: "#0f172a", fontWeight: 500 }}>
+                    {rule.rule}
+                  </span>
+                </div>
 
-          {/* Excluded Brands */}
-          <div style={{ marginBottom: "20px" }}>
-            <label
-              style={{ display: "block", fontSize: "13px", fontWeight: 600, color: "#010507", marginBottom: "6px" }}
-            >
-              Restricted &amp; Excluded Brands
-            </label>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", marginBottom: "10px" }}>
-              {profile.preferences.avoidBrands.map((brand) => (
-                <span
-                  key={brand}
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: "6px",
-                    padding: "4px 10px",
-                    borderRadius: "999px",
-                    backgroundColor: "#fee2e2",
-                    color: "#991b1b",
-                    fontSize: "12px",
-                    fontWeight: 500,
-                  }}
-                >
-                  {brand}
+                <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
                   <button
                     type="button"
-                    onClick={() => removeAvoidBrand(brand)}
-                    style={{ background: "none", border: "none", color: "#991b1b", cursor: "pointer", padding: 0 }}
+                    onClick={() => toggleKnowledgeRule(rule.id)}
+                    style={{
+                      padding: "4px 10px",
+                      borderRadius: "6px",
+                      fontSize: "11px",
+                      fontWeight: 700,
+                      border: "none",
+                      backgroundColor: rule.enabled ? "#dcfce7" : "#e2e8f0",
+                      color: rule.enabled ? "#166534" : "#64748b",
+                      cursor: "pointer",
+                    }}
+                  >
+                    {rule.enabled ? "ACTIVE" : "PAUSED"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => deleteKnowledgeRule(rule.id)}
+                    style={{
+                      background: "none",
+                      border: "none",
+                      color: "#94a3b8",
+                      fontSize: "16px",
+                      cursor: "pointer",
+                      padding: "4px 8px",
+                    }}
+                    title="Delete Rule"
                   >
                     &times;
                   </button>
-                </span>
-              ))}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Add New Knowledge Rule Form */}
+          <form
+            onSubmit={handleAddKnowledgeRule}
+            style={{
+              padding: "16px",
+              borderRadius: "12px",
+              backgroundColor: "#f8fafc",
+              border: "1px solid #e2e8f0",
+              display: "flex",
+              gap: "10px",
+              alignItems: "center",
+            }}
+          >
+            <select
+              value={newRuleCategory}
+              onChange={(e) => setNewRuleCategory(e.target.value as SovereignKnowledgeRule["category"])}
+              style={{
+                padding: "10px 12px",
+                borderRadius: "8px",
+                border: "1px solid #dbdbe5",
+                fontSize: "13px",
+                backgroundColor: "#ffffff",
+              }}
+            >
+              <option value="General">General</option>
+              <option value="Finance">Finance</option>
+              <option value="Travel">Travel</option>
+              <option value="Shopping">Shopping</option>
+              <option value="Housing">Housing</option>
+              <option value="Privacy">Privacy</option>
+              <option value="Custom">Custom</option>
+            </select>
+            <input
+              type="text"
+              value={newRuleText}
+              onChange={(e) => setNewRuleText(e.target.value)}
+              placeholder="e.g. Reject flights with layovers over 2 hours, I have wide feet, Must include free breakfast..."
+              style={{
+                flex: 1,
+                padding: "10px 14px",
+                borderRadius: "8px",
+                border: "1px solid #dbdbe5",
+                fontSize: "13px",
+              }}
+            />
+            <button
+              type="submit"
+              style={{
+                padding: "10px 20px",
+                borderRadius: "8px",
+                backgroundColor: "#010507",
+                color: "#ffffff",
+                border: "none",
+                fontSize: "13px",
+                fontWeight: 600,
+                cursor: "pointer",
+                whiteSpace: "nowrap",
+              }}
+            >
+              Add Knowledge Rule
+            </button>
+          </form>
+        </div>
+
+        {/* Card 2: Value Priority Weights & Universal Controls */}
+        <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr", gap: "20px" }}>
+          {/* Sliders */}
+          <div
+            style={{
+              background: "#ffffff",
+              borderRadius: "18px",
+              border: "1px solid #dbdbe5",
+              padding: "24px",
+            }}
+          >
+            <h3 style={{ fontSize: "16px", fontWeight: 700, margin: "0 0 6px", color: "#010507" }}>
+              Universal Decision Priority Weights
+            </h3>
+            <p style={{ fontSize: "13px", color: "#57575b", margin: "0 0 20px" }}>
+              How your advocate mathematically balances trade-offs when scoring live candidates.
+            </p>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+              <div>
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "6px" }}>
+                  <span style={{ fontSize: "13px", fontWeight: 600, color: "#010507" }}>Budget &amp; Cost Savings</span>
+                  <span style={{ fontSize: "13px", fontWeight: 700, color: "#166534" }}>{pctBudget}% weight</span>
+                </div>
+                <input
+                  type="range"
+                  min="5"
+                  max="100"
+                  value={profile.priorities.budget}
+                  onChange={(e) => {
+                    const updated = { ...profile, priorities: { ...profile.priorities, budget: Number(e.target.value) } };
+                    setProfile(updated);
+                    saveUserProfile(updated);
+                  }}
+                  style={{ width: "100%", accentColor: "#166534" }}
+                />
+              </div>
+
+              <div>
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "6px" }}>
+                  <span style={{ fontSize: "13px", fontWeight: 600, color: "#010507" }}>Convenience &amp; Comfort</span>
+                  <span style={{ fontSize: "13px", fontWeight: 700, color: "#2563eb" }}>{pctComfort}% weight</span>
+                </div>
+                <input
+                  type="range"
+                  min="5"
+                  max="100"
+                  value={profile.priorities.comfort}
+                  onChange={(e) => {
+                    const updated = { ...profile, priorities: { ...profile.priorities, comfort: Number(e.target.value) } };
+                    setProfile(updated);
+                    saveUserProfile(updated);
+                  }}
+                  style={{ width: "100%", accentColor: "#2563eb" }}
+                />
+              </div>
+
+              <div>
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "6px" }}>
+                  <span style={{ fontSize: "13px", fontWeight: 600, color: "#010507" }}>Quality &amp; Aesthetics</span>
+                  <span style={{ fontSize: "13px", fontWeight: 700, color: "#7c3aed" }}>{pctStyle}% weight</span>
+                </div>
+                <input
+                  type="range"
+                  min="5"
+                  max="100"
+                  value={profile.priorities.style}
+                  onChange={(e) => {
+                    const updated = { ...profile, priorities: { ...profile.priorities, style: Number(e.target.value) } };
+                    setProfile(updated);
+                    saveUserProfile(updated);
+                  }}
+                  style={{ width: "100%", accentColor: "#7c3aed" }}
+                />
+              </div>
             </div>
+          </div>
+
+          {/* Excluded Brands & Entities */}
+          <div
+            style={{
+              background: "#ffffff",
+              borderRadius: "18px",
+              border: "1px solid #dbdbe5",
+              padding: "24px",
+              display: "flex",
+              flexDirection: "column",
+              justifyContent: "space-between",
+            }}
+          >
+            <div>
+              <h3 style={{ fontSize: "16px", fontWeight: 700, margin: "0 0 6px", color: "#991b1b" }}>
+                Strict Exclusions &amp; Blocklist
+              </h3>
+              <p style={{ fontSize: "13px", color: "#57575b", margin: "0 0 14px" }}>
+                Entities, brands, or platforms your advocate will strictly eliminate from all feeds.
+              </p>
+
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", marginBottom: "16px" }}>
+                {profile.preferences.avoidBrands.map((brand) => (
+                  <span
+                    key={brand}
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "6px",
+                      padding: "4px 10px",
+                      borderRadius: "999px",
+                      backgroundColor: "#fee2e2",
+                      color: "#991b1b",
+                      fontSize: "12px",
+                      fontWeight: 600,
+                    }}
+                  >
+                    <span>{brand}</span>
+                    <button
+                      type="button"
+                      onClick={() => removeAvoidBrand(brand)}
+                      style={{ background: "none", border: "none", cursor: "pointer", color: "#991b1b", padding: 0 }}
+                    >
+                      &times;
+                    </button>
+                  </span>
+                ))}
+              </div>
+            </div>
+
             <form onSubmit={addAvoidBrand} style={{ display: "flex", gap: "8px" }}>
               <input
                 type="text"
                 value={avoidBrandInput}
                 onChange={(e) => setAvoidBrandInput(e.target.value)}
-                placeholder="Add brand to exclude..."
+                placeholder="Add brand or vendor to block..."
                 style={{
                   flex: 1,
                   padding: "8px 12px",
@@ -321,220 +498,20 @@ export default function RulesPage() {
                 style={{
                   padding: "8px 14px",
                   borderRadius: "8px",
-                  backgroundColor: "#f4f4f5",
-                  border: "1px solid #dbdbe5",
-                  fontSize: "13px",
+                  backgroundColor: "#991b1b",
+                  color: "#ffffff",
+                  border: "none",
+                  fontSize: "12px",
+                  fontWeight: 600,
                   cursor: "pointer",
                 }}
               >
-                Add
+                Block
               </button>
             </form>
           </div>
-
-          {/* Non-negotiables */}
-          <div>
-            <label
-              style={{ display: "block", fontSize: "13px", fontWeight: 600, color: "#010507", marginBottom: "6px" }}
-            >
-              Non-Negotiables
-            </label>
-            <ul style={{ margin: "0 0 10px", paddingLeft: "18px", fontSize: "13px", color: "#374151" }}>
-              {profile.preferences.nonNegotiables.map((item, idx) => (
-                <li key={idx} style={{ marginBottom: "6px" }}>
-                  <span>{item}</span>{" "}
-                  <button
-                    type="button"
-                    onClick={() => removeNonNegotiable(idx)}
-                    style={{
-                      background: "none",
-                      border: "none",
-                      color: "#9ca3af",
-                      cursor: "pointer",
-                      fontSize: "12px",
-                    }}
-                  >
-                    [remove]
-                  </button>
-                </li>
-              ))}
-            </ul>
-            <form onSubmit={addNonNegotiable} style={{ display: "flex", gap: "8px" }}>
-              <input
-                type="text"
-                value={nonNegInput}
-                onChange={(e) => setNonNegInput(e.target.value)}
-                placeholder="e.g. Must have arch support..."
-                style={{
-                  flex: 1,
-                  padding: "8px 12px",
-                  borderRadius: "8px",
-                  border: "1px solid #dbdbe5",
-                  fontSize: "13px",
-                }}
-              />
-              <button
-                type="submit"
-                style={{
-                  padding: "8px 14px",
-                  borderRadius: "8px",
-                  backgroundColor: "#f4f4f5",
-                  border: "1px solid #dbdbe5",
-                  fontSize: "13px",
-                  cursor: "pointer",
-                }}
-              >
-                Add Rule
-              </button>
-            </form>
-          </div>
-        </section>
-
-        {/* Right Column: Adjustable Priorities */}
-        <section
-          style={{
-            background: "#ffffff",
-            borderRadius: "16px",
-            border: "1px solid #dbdbe5",
-            padding: "28px",
-            boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "8px" }}>
-            <span
-              style={{
-                fontSize: "11px",
-                fontWeight: 700,
-                textTransform: "uppercase",
-                letterSpacing: "0.05em",
-                backgroundColor: "#e0e7ff",
-                color: "#4338ca",
-                padding: "2px 8px",
-                borderRadius: "999px",
-              }}
-            >
-              Ranking Heuristic
-            </span>
-            <h2 style={{ fontSize: "20px", fontWeight: 600, margin: 0, color: "#010507" }}>
-              Adjustable Priorities
-            </h2>
-          </div>
-          <p style={{ fontSize: "13px", color: "#57575b", margin: "0 0 24px" }}>
-            Priority weights determine how acceptable shoes are ranked. Changing these immediately shifts recommendations.
-          </p>
-
-          {/* Budget Priority */}
-          <div style={{ marginBottom: "24px" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "6px" }}>
-              <span style={{ fontSize: "14px", fontWeight: 600, color: "#010507" }}>Budget Priority</span>
-              <span style={{ fontSize: "14px", fontWeight: 700, color: "#166534" }}>
-                {pctBudget}% weight
-              </span>
-            </div>
-            <input
-              type="range"
-              min="0"
-              max="100"
-              value={profile.priorities.budget}
-              onChange={(e) =>
-                setProfile({
-                  ...profile,
-                  priorities: { ...profile.priorities, budget: parseInt(e.target.value) || 0 },
-                })
-              }
-              style={{ width: "100%", accentColor: "#166534" }}
-            />
-            <div style={{ fontSize: "12px", color: "#6b7280" }}>
-              Higher weight prioritizes lowest prices and maximum dollar savings.
-            </div>
-          </div>
-
-          {/* Comfort Priority */}
-          <div style={{ marginBottom: "24px" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "6px" }}>
-              <span style={{ fontSize: "14px", fontWeight: 600, color: "#010507" }}>Comfort Priority</span>
-              <span style={{ fontSize: "14px", fontWeight: 700, color: "#2563eb" }}>
-                {pctComfort}% weight
-              </span>
-            </div>
-            <input
-              type="range"
-              min="0"
-              max="100"
-              value={profile.priorities.comfort}
-              onChange={(e) =>
-                setProfile({
-                  ...profile,
-                  priorities: { ...profile.priorities, comfort: parseInt(e.target.value) || 0 },
-                })
-              }
-              style={{ width: "100%", accentColor: "#2563eb" }}
-            />
-            <div style={{ fontSize: "12px", color: "#6b7280" }}>
-              Higher weight prioritizes plush cushioning, foam technology, and foot support.
-            </div>
-          </div>
-
-          {/* Style Priority */}
-          <div style={{ marginBottom: "28px" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "6px" }}>
-              <span style={{ fontSize: "14px", fontWeight: 600, color: "#010507" }}>Style Priority</span>
-              <span style={{ fontSize: "14px", fontWeight: 700, color: "#9333ea" }}>
-                {pctStyle}% weight
-              </span>
-            </div>
-            <input
-              type="range"
-              min="0"
-              max="100"
-              value={profile.priorities.style}
-              onChange={(e) =>
-                setProfile({
-                  ...profile,
-                  priorities: { ...profile.priorities, style: parseInt(e.target.value) || 0 },
-                })
-              }
-              style={{ width: "100%", accentColor: "#9333ea" }}
-            />
-            <div style={{ fontSize: "12px", color: "#6b7280" }}>
-              Higher weight prioritizes clean silhouettes, modern colorways, and aesthetics.
-            </div>
-          </div>
-
-          {/* Visual Bar Summary */}
-          <div
-            style={{
-              padding: "16px",
-              borderRadius: "12px",
-              backgroundColor: "#f8f8fc",
-              border: "1px solid #e5e7eb",
-            }}
-          >
-            <div style={{ fontSize: "12px", fontWeight: 600, color: "#374151", marginBottom: "8px" }}>
-              Current Weight Distribution
-            </div>
-            <div
-              style={{
-                height: "12px",
-                borderRadius: "999px",
-                display: "flex",
-                overflow: "hidden",
-                backgroundColor: "#e5e7eb",
-              }}
-            >
-              <div style={{ width: `${pctBudget}%`, backgroundColor: "#166534" }} title={`Budget: ${pctBudget}%`} />
-              <div style={{ width: `${pctComfort}%`, backgroundColor: "#2563eb" }} title={`Comfort: ${pctComfort}%`} />
-              <div style={{ width: `${pctStyle}%`, backgroundColor: "#9333ea" }} title={`Style: ${pctStyle}%`} />
-            </div>
-            <div style={{ display: "flex", justifyContent: "space-between", fontSize: "11px", marginTop: "6px", color: "#57575b" }}>
-              <span>Budget ({pctBudget}%)</span>
-              <span>Comfort ({pctComfort}%)</span>
-              <span>Style ({pctStyle}%)</span>
-            </div>
-          </div>
-        </section>
+        </div>
       </div>
     </main>
   );
 }
-

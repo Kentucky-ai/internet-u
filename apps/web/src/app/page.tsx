@@ -33,6 +33,8 @@ export default function HomePage() {
   const [inspectingTile, setInspectingTile] = useState<AdvocateTile[] | null>(null);
   const [activeModalTile, setActiveModalTile] = useState<AdvocateTile | null>(null);
   const [tileCreatedNotice, setTileCreatedNotice] = useState<string | null>(null);
+  const [isGeneratingTile, setIsGeneratingTile] = useState(false);
+  const [generatingStep, setGeneratingStep] = useState("Dispatching Exa Neural Search across live web...");
 
   // Sneaker Experience State
   const [profile, setProfile] = useState<UserProfile>(DEFAULT_USER_PROFILE);
@@ -44,9 +46,20 @@ export default function HomePage() {
   const [purchasedNotice, setPurchasedNotice] = useState<string | null>(null);
   const [showChatPanel, setShowChatPanel] = useState(false);
 
-  // Load profile from localStorage on mount and listen to changes
+  // Load profile & tiles from localStorage on mount and listen to changes
   useEffect(() => {
     setProfile(loadUserProfile());
+    try {
+      const saved = localStorage.getItem("internet_u_custom_tiles_v1");
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setTiles(parsed);
+        }
+      }
+    } catch (e) {
+      console.warn("Failed to load saved tiles:", e);
+    }
     const handleProfileUpdate = (e: Event) => {
       const customEvent = e as CustomEvent<UserProfile>;
       if (customEvent.detail) {
@@ -107,8 +120,8 @@ export default function HomePage() {
     }
   };
 
-  // Spin up a new advocate tile
-  const handleCreateTile = (e: React.FormEvent) => {
+  // Spin up a new advocate tile via live Agentic Loop
+  const handleCreateTile = async (e: React.FormEvent) => {
     e.preventDefault();
     const prompt = commandPrompt.trim();
     if (!prompt) return;
@@ -119,13 +132,66 @@ export default function HomePage() {
       return;
     }
 
-    const newTile = createTileFromPrompt(prompt);
-    setTiles([newTile, ...tiles]);
+    setIsGeneratingTile(true);
+    setGeneratingStep("1. Dispatching Exa Neural Search across live web sources...");
+
+    const stepTimer1 = setTimeout(() => {
+      setGeneratingStep("2. Neutralizing commercial affiliate steering & hidden fees...");
+    }, 1200);
+
+    const stepTimer2 = setTimeout(() => {
+      setGeneratingStep("3. Synthesizing executable sovereign workspace via OpenRouter...");
+    }, 2400);
+
+    try {
+      const res = await fetch("/api/agent/generate-tile", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt, userKnowledge: profile }),
+      });
+
+      clearTimeout(stepTimer1);
+      clearTimeout(stepTimer2);
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data.tile) {
+          const updatedTiles = [data.tile, ...tiles];
+          setTiles(updatedTiles);
+          try {
+            localStorage.setItem("internet_u_custom_tiles_v1", JSON.stringify(updatedTiles));
+          } catch (storageErr) {
+            console.warn(storageErr);
+          }
+          setCommandPrompt("");
+          setActiveWorkspaceTile(data.tile);
+          setActiveView("tile-workspace");
+          setTileCreatedNotice(`Spun up live advocate tile: "${data.tile.title}"`);
+          setTimeout(() => setTileCreatedNotice(null), 4000);
+          setIsGeneratingTile(false);
+          return;
+        }
+      }
+    } catch (err) {
+      console.warn("Agentic tile generation network issue, using fast fallback:", err);
+    } finally {
+      clearTimeout(stepTimer1);
+      clearTimeout(stepTimer2);
+    }
+
+    // Fallback if network offline
+    const fallbackTile = createTileFromPrompt(prompt);
+    const updated = [fallbackTile, ...tiles];
+    setTiles(updated);
+    try {
+      localStorage.setItem("internet_u_custom_tiles_v1", JSON.stringify(updated));
+    } catch (storageErr) {
+      console.warn(storageErr);
+    }
     setCommandPrompt("");
-    setActiveWorkspaceTile(newTile);
+    setActiveWorkspaceTile(fallbackTile);
     setActiveView("tile-workspace");
-    setTileCreatedNotice(`Spun up new advocate tile: "${newTile.title}"`);
-    setTimeout(() => setTileCreatedNotice(null), 4000);
+    setIsGeneratingTile(false);
   };
 
   // Configure CopilotKit suggestions
@@ -1439,6 +1505,94 @@ export default function HomePage() {
         onClose={() => setActiveModalTile(null)}
         onOpenWorkspace={handleOpenTileWorkspace}
       />
+
+      {/* Live Agentic Loop Generation Modal */}
+      {isGeneratingTile && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          style={{
+            position: "fixed",
+            inset: 0,
+            backgroundColor: "rgba(1, 5, 7, 0.78)",
+            backdropFilter: "blur(6px)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 10000,
+            padding: "20px",
+          }}
+        >
+          <div
+            style={{
+              background: "#ffffff",
+              borderRadius: "20px",
+              maxWidth: "500px",
+              width: "100%",
+              padding: "36px",
+              boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.35)",
+              border: "1px solid #dbdbe5",
+              textAlign: "center",
+            }}
+          >
+            <div
+              style={{
+                width: "56px",
+                height: "56px",
+                borderRadius: "50%",
+                backgroundColor: "#010507",
+                color: "#ffffff",
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontSize: "24px",
+                marginBottom: "18px",
+                boxShadow: "0 0 0 8px rgba(1, 5, 7, 0.08)",
+              }}
+            >
+              ⚡
+            </div>
+
+            <h3 style={{ fontSize: "20px", fontWeight: 800, color: "#010507", margin: "0 0 8px" }}>
+              Agentic Loop In Progress
+            </h3>
+            <p style={{ fontSize: "14px", color: "#475569", lineHeight: 1.5, margin: "0 0 24px" }}>
+              Your sovereign advocate is scouring the live web via Exa and constructing a guarded workspace.
+            </p>
+
+            <div
+              style={{
+                padding: "16px 20px",
+                borderRadius: "12px",
+                backgroundColor: "#f8fafc",
+                border: "1px solid #e2e8f0",
+                fontSize: "13px",
+                fontWeight: 600,
+                color: "#166534",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: "10px",
+              }}
+            >
+              <span
+                style={{
+                  width: "10px",
+                  height: "10px",
+                  borderRadius: "50%",
+                  backgroundColor: "#22c55e",
+                  display: "inline-block",
+                }}
+              />
+              <span>{generatingStep}</span>
+            </div>
+
+            <div style={{ marginTop: "20px", fontSize: "12px", color: "#94a3b8" }}>
+              Grounded with real-time Exa Neural Search &amp; OpenRouter
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -8,7 +8,10 @@ function canonicalProvider(provider: string) {
 }
 
 export function resolveModel() {
-  const model = (process.env.MODEL || DEFAULT_MODEL).trim();
+  const rawModel =
+    process.env.AGENT_MODEL ||
+    (process.env.MODEL && process.env.MODEL !== "7680" ? process.env.MODEL : "openai/gpt-4o-mini");
+  const model = rawModel.trim();
   const firstSeparator = model.search(/[:/]/);
   const candidatePrefix = firstSeparator >= 0 ? canonicalProvider(model.slice(0, firstSeparator)) : undefined;
   // A colon in a bare model name can introduce a variant, such as ':free'.

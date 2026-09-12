@@ -1,3 +1,11 @@
+export interface SovereignKnowledgeRule {
+  id: string;
+  category: "General" | "Finance" | "Travel" | "Shopping" | "Housing" | "Privacy" | "Custom";
+  rule: string;
+  type: "hard_constraint" | "preference" | "strict_exclusion";
+  enabled: boolean;
+}
+
 export interface UserPriorities {
   budget: number;
   comfort: number;
@@ -19,7 +27,53 @@ export interface UserProfile {
   priorities: UserPriorities;
   preferences: UserPreferences;
   learnedRules: string[];
+  knowledgeRules: SovereignKnowledgeRule[];
 }
+
+export const DEFAULT_KNOWLEDGE_RULES: SovereignKnowledgeRule[] = [
+  {
+    id: "kb-1",
+    category: "Finance",
+    rule: "Always enforce all-in pricing with zero undisclosed fees or surprise checkout markups.",
+    type: "hard_constraint",
+    enabled: true,
+  },
+  {
+    id: "kb-2",
+    category: "Privacy",
+    rule: "Strip third-party tracking pixels, referral cookies, and dynamic surge pricing.",
+    type: "strict_exclusion",
+    enabled: true,
+  },
+  {
+    id: "kb-3",
+    category: "General",
+    rule: "Hard action gate: Never execute purchases or enter credit cards without explicit human sign-off.",
+    type: "hard_constraint",
+    enabled: true,
+  },
+  {
+    id: "kb-4",
+    category: "Travel",
+    rule: "Require full overhead carry-on baggage; reject unbundled basic economy tickets.",
+    type: "preference",
+    enabled: true,
+  },
+  {
+    id: "kb-5",
+    category: "Shopping",
+    rule: "Filter artificial resale markups, hype scalpers, and sponsored affiliate ranking listicles.",
+    type: "strict_exclusion",
+    enabled: true,
+  },
+  {
+    id: "kb-6",
+    category: "Housing",
+    rule: "Eliminate broker fee traps; verify in-unit laundry and true out-the-door lease cost.",
+    type: "hard_constraint",
+    enabled: true,
+  },
+];
 
 export const DEFAULT_USER_PROFILE: UserProfile = {
   id: "demo-user",
@@ -37,17 +91,18 @@ export const DEFAULT_USER_PROFILE: UserProfile = {
     styles: ["Casual", "Running", "Minimalist"],
     nonNegotiables: [
       "Must not exceed budget under any circumstances",
-      "Reject high-friction subscription or app-required shoes",
-      "Require genuine support/cushioning for daily walking",
+      "Reject high-friction subscription or app-required items",
+      "Require genuine quality and durability for everyday use",
     ],
   },
   learnedRules: [
     "User prefers arch support and breathable mesh over heavy leather.",
     "Do not recommend hype sneakers with inflated resale markups.",
   ],
+  knowledgeRules: DEFAULT_KNOWLEDGE_RULES,
 };
 
-const STORAGE_KEY = "internet_u_profile_v1";
+const STORAGE_KEY = "internet_u_profile_v2";
 
 export function loadUserProfile(): UserProfile {
   if (typeof window === "undefined") {
@@ -69,6 +124,7 @@ export function loadUserProfile(): UserProfile {
           ...(parsed.preferences || {}),
         },
         learnedRules: parsed.learnedRules || DEFAULT_USER_PROFILE.learnedRules,
+        knowledgeRules: parsed.knowledgeRules || DEFAULT_KNOWLEDGE_RULES,
       };
     }
   } catch (err) {
@@ -91,4 +147,3 @@ export function resetUserProfile(): UserProfile {
   saveUserProfile(DEFAULT_USER_PROFILE);
   return DEFAULT_USER_PROFILE;
 }
-

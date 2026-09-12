@@ -17,6 +17,7 @@ export interface TileCandidate {
   status: "approved" | "blocked_trap";
   trapReason?: string;
   source: string;
+  url?: string;
   ruleChecks: TileCandidateRuleCheck[];
 }
 
