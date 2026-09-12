@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import { EvaluationResult } from "@/lib/ranking";
+import { getUid, UID_HEADER } from "@/lib/vault-client";
+import { recordDecision } from "@/lib/decisions";
 
 interface ApprovalModalProps {
   evaluation: EvaluationResult | null;
@@ -11,12 +13,45 @@ interface ApprovalModalProps {
 
 export function ApprovalModal({ evaluation, onClose, onApproved }: ApprovalModalProps) {
   const [approved, setApproved] = useState(false);
+  const [checking, setChecking] = useState(false);
+  const [refusal, setRefusal] = useState<string[] | null>(null);
 
   if (!evaluation) return null;
 
   const { product, matchedRules } = evaluation;
 
-  const handleApprove = () => {
+  // The click is a request, not a command. The server-side Guardian reads the
+  // user's bio from the vault and decides; the UI only reports what it said.
+  const handleApprove = async () => {
+    setChecking(true);
+    setRefusal(null);
+    try {
+      const uid = getUid();
+      const res = await fetch("/api/guardian", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...(uid ? { [UID_HEADER]: uid } : {}) },
+        body: JSON.stringify({
+          action: "approve",
+          subject: { title: `${product.brand} ${product.name}`, description: product.description, tags: [product.category, ...product.features] },
+        }),
+      });
+      const data = (await res.json()) as { verdict?: { blocked: string[] }; error?: string };
+      if (res.status === 403 && data.verdict) {
+        setRefusal(data.verdict.blocked);
+        recordDecision({ kind: "guardian-block", subject: product.name, detail: `Server gate refused approval: ${data.verdict.blocked.join(" ")}` });
+        return;
+      }
+      if (!res.ok) {
+        setRefusal([data.error || `Gate unavailable (${res.status}). Nothing was approved.`]);
+        return;
+      }
+    } catch {
+      setRefusal(["Could not reach the Guardian gate. Nothing was approved."]);
+      return;
+    } finally {
+      setChecking(false);
+    }
+    recordDecision({ kind: "approval", subject: product.name, detail: `Approved at $${product.price.toFixed(2)} after server Guardian check.` });
     setApproved(true);
     setTimeout(() => {
       onApproved(product.name);
@@ -122,6 +157,31 @@ export function ApprovalModal({ evaluation, onClose, onApproved }: ApprovalModal
               Do you authorize preparing this action?
             </p>
 
+            {refusal && (
+              <div
+                role="alert"
+                style={{
+                  padding: "12px 14px",
+                  borderRadius: "10px",
+                  backgroundColor: "#fef2f2",
+                  border: "1px solid #fecaca",
+                  color: "#991b1b",
+                  fontSize: "13px",
+                  marginBottom: "16px",
+                }}
+              >
+                <strong>Guardian refused this on the server.</strong>
+                <ul style={{ margin: "6px 0 0", paddingLeft: "18px" }}>
+                  {refusal.map((r, i) => (
+                    <li key={i}>{r}</li>
+                  ))}
+                </ul>
+                <div style={{ fontSize: "11px", marginTop: "6px", color: "#b91c1c" }}>
+                  Enforced by /api/guardian against the bio in your vault — not by this button.
+                </div>
+              </div>
+            )}
+
             <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px" }}>
               <button
                 type="button"
@@ -142,6 +202,7 @@ export function ApprovalModal({ evaluation, onClose, onApproved }: ApprovalModal
               <button
                 type="button"
                 onClick={handleApprove}
+                disabled={checking}
                 style={{
                   padding: "9px 20px",
                   borderRadius: "8px",
@@ -150,10 +211,11 @@ export function ApprovalModal({ evaluation, onClose, onApproved }: ApprovalModal
                   border: "none",
                   fontWeight: 600,
                   fontSize: "13px",
-                  cursor: "pointer",
+                  cursor: checking ? "wait" : "pointer",
+                  opacity: checking ? 0.7 : 1,
                 }}
               >
-                Yes, Authorize Action
+                {checking ? "Asking the Guardian…" : refusal ? "Try Again" : "Yes, Authorize Action"}
               </button>
             </div>
           </>

@@ -77,14 +77,19 @@ export function loadUserProfile(): UserProfile {
   return DEFAULT_USER_PROFILE;
 }
 
-export function saveUserProfile(profile: UserProfile): void {
-  if (typeof window === "undefined") return;
+export function saveUserProfile(profile: UserProfile, options: { remote?: boolean } = {}): UserProfile {
+  if (typeof window === "undefined") return profile;
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(profile));
     window.dispatchEvent(new CustomEvent("internet_u_profile_updated", { detail: profile }));
   } catch (err) {
     console.warn("Failed to save user profile to storage:", err);
   }
+  if (options.remote !== false) {
+    // The vault is the durable copy; local storage is the offline cache.
+    import("./vault-client").then((m) => m.pushVault({ profile })).catch(() => undefined);
+  }
+  return profile;
 }
 
 export function resetUserProfile(): UserProfile {

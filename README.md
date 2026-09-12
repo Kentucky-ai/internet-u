@@ -157,3 +157,33 @@ For Netlify:
 | Product Catalog | **Mocked / Live hybrid** | Real-world models with fallback data + Exa web search tool |
 | External Cart / Checkout | **Intentionally Deferred** | Real credit card charging is out of scope for the MVP |
 | Background Social Scraping | **Intentionally Deferred** | Disallowed by design: all connectors require explicit consent |
+
+---
+
+## 5. Persistence & the Guardian (branch `feature/guardian-bio`)
+
+This branch turns the advocate into a **guardian**: the user writes a full bio — faith, lifestyle, age, abilities, values, and an explicit "protect me from" list — and every recommendation is screened against it **on the server** before it reaches the page.
+
+### About Me (`/me`)
+- Full bio editor in the same design language as the portal. Nothing is inferred; blank means unknown, never guessed.
+- Lifestyle lines phrased as exclusions ("Alcohol-free", "No leather") become protections automatically.
+- **Guardian preview**: paste any pitch, see the verdict live, then press *Try to approve this through the server gate* to watch `POST /api/guardian` answer **403** with the reasons. That refusal is the demo.
+- **Location, on your terms**: an explicit consent panel, one browser geolocation read, rounded to ~1 km before it is stored, revocable, and shown on every Exa search that uses it.
+- **Decision ledger**: every block, approval, and consent is written down and persisted.
+
+### Persistence (the vault)
+- One anonymous id per browser (header `x-internet-u-uid`, never a URL), one document: profile, bio, decisions.
+- `PUT/GET/DELETE /api/profile` → **Netlify Blobs** in production, a gitignored `.data/vault/*.json` file everywhere else. The UI says which one answered.
+- Rules, sliders, learned lessons, and the bio all hydrate from the vault on load; local storage is the offline cache.
+
+### Enforcement, not decoration
+- `apps/web/src/lib/guardian.ts` — deterministic screen: protections + synonym table, derived exclusions, age gates (18+/21+), faith-practice and accessibility cautions. No API key needed, so it cannot be down.
+- `/api/guardian` — the approval modal asks the server before it reports anything as approved; the server reads the bio from the vault, not from the request.
+- `/api/search` — every Exa hit is screened server-side; blocked hits are returned as `held` with reasons so the user sees what was kept from them.
+- The command bar refuses to spin up a tile for anything on the protections list, and logs it.
+- The CopilotKit agent receives the bio via `useAgentContext` and the system prompt carries the Guardian and Location principles; the coarse label is the only location the model ever sees.
+
+### Environment
+Nothing new is required. `EXA_API_KEY` enables live search results (the Guardian screens whatever comes back); without it the card says so. Netlify Blobs needs no configuration on Netlify.
+
+`npm run verify` covers the guardian and vault tests.

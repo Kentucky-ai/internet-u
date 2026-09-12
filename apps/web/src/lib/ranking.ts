@@ -1,5 +1,7 @@
 import { Product } from "./sneakers-data";
 import { UserProfile } from "./user-profile";
+import type { UserBio } from "./user-bio";
+import { screenWithGuardian, type GuardianVerdict } from "./guardian";
 
 export interface EvaluationResult {
   product: Product;
@@ -10,6 +12,8 @@ export interface EvaluationResult {
   violatedRules: string[];
   tradeoffs: string[];
   unknowns: string[];
+  /** Present when the user's bio was available to screen against. */
+  guardian?: GuardianVerdict;
   explanation: string;
   componentScores: {
     budgetScore: number;
@@ -36,7 +40,7 @@ export function calculateBudgetScore(price: number, budget: number): number {
   return Math.max(10, Math.min(100, score));
 }
 
-export function evaluateProduct(product: Product, profile: UserProfile): EvaluationResult {
+export function evaluateProduct(product: Product, profile: UserProfile, bio?: UserBio): EvaluationResult {
   const violatedRules: string[] = [];
   const matchedRules: string[] = [];
   const tradeoffs: string[] = [];
@@ -64,6 +68,17 @@ export function evaluateProduct(product: Product, profile: UserProfile): Evaluat
   // 3. Non-negotiables
   if (product.requiresAppOrSub) {
     violatedRules.push("Requires companion mobile app or proprietary subscription");
+  }
+
+  // 3b. The Guardian: the user's bio (faith, lifestyle, age, abilities, protections).
+  let guardian: GuardianVerdict | undefined;
+  if (bio) {
+    guardian = screenWithGuardian(
+      { title: `${product.brand} ${product.name}`, description: product.description, tags: [product.category, ...product.features], source: "catalog" },
+      bio
+    );
+    for (const reason of guardian.blocked) violatedRules.push(`Guardian: ${reason}`);
+    for (const caution of guardian.cautions) tradeoffs.push(`Guardian caution: ${caution}`);
   }
 
   const isRejected = violatedRules.length > 0;
@@ -135,6 +150,7 @@ export function evaluateProduct(product: Product, profile: UserProfile): Evaluat
     violatedRules,
     tradeoffs,
     unknowns,
+    guardian,
     explanation,
     componentScores: {
       budgetScore,
@@ -144,8 +160,8 @@ export function evaluateProduct(product: Product, profile: UserProfile): Evaluat
   };
 }
 
-export function rankSneakers(products: Product[], profile: UserProfile): RankedPerspectiveResults {
-  const evaluated = products.map((p) => evaluateProduct(p, profile));
+export function rankSneakers(products: Product[], profile: UserProfile, bio?: UserBio): RankedPerspectiveResults {
+  const evaluated = products.map((p) => evaluateProduct(p, profile, bio));
 
   const valid = evaluated.filter((r) => !r.isRejected);
   const rejected = evaluated.filter((r) => r.isRejected);

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
-import { CopilotChat, useConfigureSuggestions } from "@copilotkit/react-core/v2";
+import { CopilotChat, useConfigureSuggestions, useAgentContext } from "@copilotkit/react-core/v2";
 import {
   UserProfile,
   loadUserProfile,
@@ -18,6 +18,11 @@ import { TileDetailModal } from "@/components/tile-detail-modal";
 import { SupervisedLearningCard } from "@/components/supervised-learning-card";
 import { FutureConnectorsCard } from "@/components/future-connectors-card";
 import { ExaWebSearchCard } from "@/components/exa-web-search-card";
+import { GuardianCard } from "@/components/guardian-card";
+import { UserBio, DEFAULT_USER_BIO, BIO_UPDATED_EVENT, summarizeBio } from "@/lib/user-bio";
+import { screenWithGuardian } from "@/lib/guardian";
+import { hydrateFromVault } from "@/lib/persistence";
+import { recordDecision, loadDecisions, DECISIONS_EVENT, type Decision } from "@/lib/decisions";
 
 type PerspectiveTab = "overall" | "budget" | "comfort" | "style";
 
@@ -31,6 +36,12 @@ export default function HomePage() {
   const [inspectingTile, setInspectingTile] = useState<AdvocateTile[] | null>(null);
   const [activeModalTile, setActiveModalTile] = useState<AdvocateTile | null>(null);
   const [tileCreatedNotice, setTileCreatedNotice] = useState<string | null>(null);
+  const [guardianNotice, setGuardianNotice] = useState<string[] | null>(null);
+
+  // Bio + Guardian + vault
+  const [bio, setBio] = useState<UserBio>(DEFAULT_USER_BIO);
+  const [vaultBackend, setVaultBackend] = useState<"netlify-blobs" | "local-file" | null>(null);
+  const [lastDecision, setLastDecision] = useState<Decision | null>(null);
 
   // Sneaker Experience State
   const [profile, setProfile] = useState<UserProfile>(DEFAULT_USER_PROFILE);
@@ -41,18 +52,52 @@ export default function HomePage() {
   const [purchasedNotice, setPurchasedNotice] = useState<string | null>(null);
   const [showChatPanel, setShowChatPanel] = useState(false);
 
-  // Load profile from localStorage on mount and listen to changes
+  // Load profile + bio from the local cache, then let the vault win.
   useEffect(() => {
     setProfile(loadUserProfile());
+    setLastDecision(loadDecisions()[0] ?? null);
+    hydrateFromVault().then((r) => {
+      setProfile(r.profile);
+      setBio(r.bio);
+      setVaultBackend(r.backend);
+      setLastDecision(r.decisions[0] ?? null);
+    });
     const handleProfileUpdate = (e: Event) => {
       const customEvent = e as CustomEvent<UserProfile>;
       if (customEvent.detail) {
         setProfile(customEvent.detail);
       }
     };
+    const handleBioUpdate = (e: Event) => {
+      const customEvent = e as CustomEvent<UserBio>;
+      if (customEvent.detail) setBio(customEvent.detail);
+    };
+    const handleDecisions = (e: Event) => {
+      const list = (e as CustomEvent<Decision[]>).detail;
+      setLastDecision(list[0] ?? null);
+    };
+    const handleVault = (e: Event) => {
+      const d = (e as CustomEvent<{ backend?: "netlify-blobs" | "local-file" }>).detail;
+      if (d?.backend) setVaultBackend(d.backend);
+    };
     window.addEventListener("internet_u_profile_updated", handleProfileUpdate);
-    return () => window.removeEventListener("internet_u_profile_updated", handleProfileUpdate);
+    window.addEventListener(BIO_UPDATED_EVENT, handleBioUpdate);
+    window.addEventListener(DECISIONS_EVENT, handleDecisions);
+    window.addEventListener("internet_u_vault_synced", handleVault);
+    return () => {
+      window.removeEventListener("internet_u_profile_updated", handleProfileUpdate);
+      window.removeEventListener(BIO_UPDATED_EVENT, handleBioUpdate);
+      window.removeEventListener(DECISIONS_EVENT, handleDecisions);
+      window.removeEventListener("internet_u_vault_synced", handleVault);
+    };
   }, []);
+
+  // The agent reads the bio the same way the Guardian does — as a floor.
+  // No coordinates: summarizeBio only ever exposes the coarse label.
+  useAgentContext({
+    description: "The user's bio and Guardian protections. Treat as hard constraints, never as suggestions.",
+    value: summarizeBio(bio),
+  });
 
   // Filter sneaker catalog by search query
   const filteredCatalog = useMemo(() => {
@@ -69,8 +114,8 @@ export default function HomePage() {
 
   // Rank sneakers dynamically
   const rankingResults: RankedPerspectiveResults = useMemo(() => {
-    return rankSneakers(filteredCatalog, profile);
-  }, [filteredCatalog, profile]);
+    return rankSneakers(filteredCatalog, profile, bio);
+  }, [filteredCatalog, profile, bio]);
 
   const topSneaker = rankingResults.overall[0] || null;
 
@@ -99,6 +144,17 @@ export default function HomePage() {
     e.preventDefault();
     const prompt = commandPrompt.trim();
     if (!prompt) return;
+
+    // The Guardian screens the request itself. A tile for something on the
+    // user's own protections list is never spun up, and the refusal is logged.
+    const verdict = screenWithGuardian({ title: prompt, source: "command" }, bio);
+    if (!verdict.allowed) {
+      setGuardianNotice(verdict.blocked);
+      recordDecision({ kind: "guardian-block", subject: prompt, detail: verdict.blocked.join(" ") });
+      setCommandPrompt("");
+      setTimeout(() => setGuardianNotice(null), 8000);
+      return;
+    }
 
     if (prompt.toLowerCase().includes("shoe") || prompt.toLowerCase().includes("sneaker")) {
       setActiveView("sneaker-deep-dive");
@@ -259,6 +315,26 @@ export default function HomePage() {
             </button>
 
             <Link
+              href="/me"
+              style={{
+                padding: "8px 16px",
+                borderRadius: "8px",
+                backgroundColor: "#ffffff",
+                color: "#5b21b6",
+                border: "1px solid #c4b5fd",
+                fontSize: "13px",
+                fontWeight: 600,
+                textDecoration: "none",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "6px",
+              }}
+            >
+              <span>🛡</span>
+              <span>About Me</span>
+            </Link>
+
+            <Link
               href="/rules"
               style={{
                 padding: "8px 18px",
@@ -296,6 +372,30 @@ export default function HomePage() {
             }}
           >
             ✓ {tileCreatedNotice}
+          </div>
+        )}
+
+        {guardianNotice && (
+          <div
+            role="alert"
+            style={{
+              padding: "12px 18px",
+              borderRadius: "10px",
+              backgroundColor: "#fef2f2",
+              color: "#991b1b",
+              border: "1px solid #fecaca",
+              marginBottom: "20px",
+              fontSize: "13px",
+              fontWeight: 500,
+            }}
+          >
+            <strong>🛡 Guardian stepped in — no tile was created.</strong>
+            {guardianNotice.map((r, i) => (
+              <div key={i} style={{ fontWeight: 400 }}>{r}</div>
+            ))}
+            <div style={{ fontSize: "11px", marginTop: "4px" }}>
+              Logged to your decision ledger. Change it on <Link href="/me" style={{ color: "#991b1b" }}>About Me</Link> if this is wrong.
+            </div>
           </div>
         )}
 
@@ -638,8 +738,11 @@ export default function HomePage() {
                 })}
               </div>
 
-              {/* Live Exa Web Grounding */}
-              <ExaWebSearchCard initialQuery="best honest travel deals and sneaker reviews 2026" />
+              {/* Guardian + Live Exa Web Grounding */}
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1.6fr", gap: "20px" }}>
+                <GuardianCard bio={bio} onBioUpdated={setBio} vaultBackend={vaultBackend} lastDecision={lastDecision} />
+                <ExaWebSearchCard initialQuery="honest local deals on everyday sneakers this week" location={bio.location} />
+              </div>
 
               {/* Supervised Learning & Connectors at Bottom of Canvas */}
               <SupervisedLearningCard
@@ -1298,8 +1401,11 @@ export default function HomePage() {
                 </div>
               )}
 
-              {/* Live Exa Web Grounding */}
-              <ExaWebSearchCard initialQuery="best everyday sneakers under 150 honest durability reviews" />
+              {/* Guardian + Live Exa Web Grounding */}
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1.6fr", gap: "20px" }}>
+                <GuardianCard bio={bio} onBioUpdated={setBio} vaultBackend={vaultBackend} lastDecision={lastDecision} compact />
+                <ExaWebSearchCard initialQuery="best everyday sneakers under 150 honest durability reviews" location={bio.location} />
+              </div>
             </div>
           )}
 

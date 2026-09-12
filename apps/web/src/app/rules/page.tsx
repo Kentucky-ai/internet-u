@@ -9,6 +9,7 @@ import {
   resetUserProfile,
   DEFAULT_USER_PROFILE,
 } from "@/lib/user-profile";
+import { hydrateFromVault } from "@/lib/persistence";
 
 export default function RulesPage() {
   const [profile, setProfile] = useState<UserProfile>(DEFAULT_USER_PROFILE);
@@ -18,6 +19,7 @@ export default function RulesPage() {
 
   useEffect(() => {
     setProfile(loadUserProfile());
+    hydrateFromVault().then((r) => setProfile(r.profile));
   }, []);
 
   const totalPriority =
