@@ -1,5 +1,6 @@
 import type { Product, Profile } from "../types";
 import { mockProducts } from "./mock";
+import { placeholderImage } from "./placeholder";
 
 export type SearchOutcome = { products: Product[]; source: "live" | "mock"; note: string };
 
@@ -15,7 +16,8 @@ export async function searchProducts(query: string, profile: Profile, signal?: A
     });
     if (res.ok) {
       const data = await res.json();
-      const products: Product[] = Array.isArray(data.products) ? data.products.filter(validProduct) : [];
+      // Model-supplied image URLs are unverifiable (often dead or hotlink-blocked); use generated art and keep the product link.
+      const products: Product[] = Array.isArray(data.products) ? data.products.filter(validProduct).map((p: Product) => ({ ...p, imageUrl: placeholderImage(p.name) })) : [];
       if (products.length >= 3) return { products, source: "live", note: `Live results via ${data.provider ?? "web search"}; comfort/style scores are model estimates, not measurements` };
       return { products: mockProducts, source: "mock", note: "Live search returned too few usable products; showing demo catalog" };
     }
