@@ -7,7 +7,7 @@ export const defaultProfile: Profile = {
   budget: 150,
   currency: "USD",
   priorities: { budget: 60, comfort: 25, style: 15 },
-  preferences: { shoeSize: null, styles: [], brands: [], avoid: [], avoidStyles: [], notes: "" },
+  preferences: { shoeSize: null, styles: [], brands: [], avoid: [], avoidStyles: [], notes: "", location: "Louisville, KY" },
 };
 
 /** Weights as fractions that sum to 1. All-zero input falls back to equal thirds. */

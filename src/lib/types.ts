@@ -12,6 +12,7 @@ export type Profile = {
     avoid: string[];        // brands to avoid
     avoidStyles: string[];
     notes: string;          // other non-negotiables, free text
+    location: string;       // home city, used by place-based modules (restaurants, travel)
   };
 };
 
@@ -30,6 +31,8 @@ export type Product = {
   style?: string;
   source?: string;           // "mock" | "live (web search)"
   scoresNote?: string;       // how the scores were derived
+  imageNote?: string;        // where the photo came from
+  imageKind?: "product" | "generated" | "representative" | "art";
 };
 
 export type Ranked = {

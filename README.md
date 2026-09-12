@@ -10,7 +10,23 @@ Live demo: https://internet-u.netlify.app
 
 ## What it does
 
-The MVP proves the idea with one job: **find sneakers by the user's own rules.**
+Internet U is a personal hub for your whole life online. One agent, working by your rules,
+across shopping, food, travel, social, email and work. The home page is a grid of tiles the
+agent can change on request ("add a restaurants tile for tonight", "show my social profile"),
+and every module runs on the same profile: your budget, priorities, avoid lists, location and
+non-negotiables.
+
+- **Hub agent** (`POST /api/agent`): turns a request into a reply plus tile operations
+  (add / remove / open). List tiles are filled by a live web search that carries your rules.
+  Requests that need your own accounts become a **permission tile** with explicit scopes;
+  nothing connects until you approve, and approval is recorded in your decisions.
+- **Modules**: sneaker shopping is the first active module; email, calendar, subscriptions,
+  travel, finance, social and work tools are declared connectors with their scopes.
+- **Real photos**: live products get a real product photo (retailer og:image, the listing's
+  own image, or image search), served through a small proxy. With an OpenRouter key the
+  fallback is a photoreal AI render; without one it is a labeled representative photo.
+
+The sneaker module proves the full loop: **find sneakers by the user's own rules.**
 
 1. **My Rules** holds the profile: hard constraints (max budget, currency, shoe size,
    brands and styles to avoid, free-text non-negotiables) and adjustable priorities
@@ -46,7 +62,8 @@ runs on deterministic local logic.
 | Variable | Where | Purpose |
 | --- | --- | --- |
 | `OPENAI_API_KEY` | server (function) | live product search via OpenAI web search; chat if no OpenRouter key |
-| `OPENROUTER_API_KEY` | server (function) | chat replies; preferred over OpenAI for chat when both are set |
+| `OPENROUTER_API_KEY` | server (function) | agent + chat replies (unless the AI Gateway path is present) and photoreal product renders |
+| `OPENROUTER_IMAGE_MODEL` | server | default `google/gemini-2.5-flash-image-preview` |
 | `OPENAI_SEARCH_MODEL`, `OPENAI_CHAT_MODEL`, `OPENROUTER_MODEL` | server | model overrides |
 | `VITE_OOF_BASE_URL` | client | OOF auth/authz base URL; unset = demo user |
 

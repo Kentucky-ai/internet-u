@@ -57,7 +57,11 @@ export function Rules() {
               <span className="hint">US sizing. Leave blank and I will say fit is unknown.</span>
               <input id="size" className="input" type="number" min={1} max={20} step={0.5} value={prefs.shoeSize ?? ""} placeholder="e.g. 10.5" onChange={e => { setPref("shoeSize", e.target.value === "" ? null : Number(e.target.value)); flashSaved(); }} />
             </div>
-            <div />
+            <div className="field">
+              <label htmlFor="location">Home location</label>
+              <span className="hint">Used by place-based modules (restaurants, travel). Never shared without a connector you approved.</span>
+              <input id="location" className="input" type="text" value={prefs.location} placeholder="City, State" onChange={e => { setPref("location", e.target.value); flashSaved(); }} />
+            </div>
             <TagInput label="Brands to avoid" hint="Never recommended, whatever the score." values={prefs.avoid} onChange={v => { setPref("avoid", v); flashSaved(); }} placeholder="e.g. Northline" />
             <TagInput label="Styles to avoid" hint="running, court, casual, trail, lifestyle" values={prefs.avoidStyles} onChange={v => { setPref("avoidStyles", v); flashSaved(); }} placeholder="e.g. trail" />
           </div>

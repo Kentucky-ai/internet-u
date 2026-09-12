@@ -17,6 +17,7 @@ export function PerspectiveCard({ label, r, flash, onWhy, onAct }: { label: stri
     <div className={`card product${flash ? " flash" : ""}`}>
       <div className="label">{label}</div>
       <Img src={p.imageUrl} alt={p.name} className="img" />
+      {p.imageNote && p.imageKind !== "product" && <div className="imgnote">{p.imageNote}</div>}
       <div>
         <div className="name">{p.name}</div>
         <div className="small muted">{p.brand}{p.style ? ` · ${p.style}` : ""}</div>

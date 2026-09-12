@@ -180,3 +180,28 @@ textarea.input { min-height: 84px; resize: vertical; }
 .badge { display: inline-block; padding: 2px 8px; border-radius: 6px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; margin-right: 6px; }
 .badge.approval { background: var(--ok-soft); color: var(--ok); } .badge.cancel { background: var(--bad-soft); color: var(--bad); } .badge.recommendation { background: var(--accent-soft); color: var(--accent); } .badge.profile { background: var(--warn-soft); color: var(--warn); }
 .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+
+/* Platform modules */
+.modules { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+@media (max-width: 1100px) { .modules { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 560px) { .modules { grid-template-columns: 1fr; } }
+.module { display: flex; flex-direction: column; gap: 10px; padding: 18px; text-decoration: none; color: inherit; position: relative; }
+.module.active { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft), var(--shadow); }
+.module.planned { opacity: .78; }
+.module .icon { font-size: 26px; line-height: 1; }
+.module h3 { font-size: 15px; }
+.module .perm { font-size: 12px; color: var(--muted); display: grid; gap: 3px; margin-top: auto; }
+.module .perm span::before { content: "🔒 "; }
+.module .status { position: absolute; top: 14px; right: 14px; }
+.brain { display: grid; gap: 8px; }
+.brain .row { display: flex; justify-content: space-between; gap: 10px; font-size: 14px; border-bottom: 1px solid var(--border); padding: 6px 0; }
+.brain .row:last-child { border-bottom: 0; }
+.brain .row span:first-child { color: var(--muted); }
+.shimmer { background: linear-gradient(90deg, var(--surface-2) 25%, var(--border) 50%, var(--surface-2) 75%); background-size: 200% 100%; animation: shimmer 1.2s infinite; }
+@keyframes shimmer { 0% { background-position: 200% 0 } 100% { background-position: -200% 0 } }
+.product .imgnote { font-size: 11px; color: var(--muted); margin-top: -4px; }
+.crumb { font-size: 13px; color: var(--muted); margin-bottom: 10px; }
+.crumb a { color: var(--muted); }
+.steps { display: flex; gap: 6px; flex-wrap: wrap; }
+.steps span { font-size: 12px; padding: 4px 9px; border-radius: 999px; background: var(--surface-2); color: var(--muted); }
+.steps span.on { background: var(--accent-soft); color: var(--accent); font-weight: 600; }

@@ -13,7 +13,7 @@ export default async (req: Request) => {
 
   const prompt = `Search the web for currently available ${query} for sale online. Return 8 real products as a JSON object {"products":[...]}.
 Include a spread of prices: at least 5 at or under ${budget} ${currency} and at least 2 above it, several different brands and styles.
-Each product: {"id": string, "name": string, "brand": string, "price": number (${currency}), "currency": "${currency}", "productUrl": string, "imageUrl": string or null,
+Each product: {"id": string, "name": string, "brand": string, "price": number (${currency}), "currency": "${currency}", "productUrl": the exact retailer or brand product-page URL that appeared in your search results (never invent or guess a URL; omit if unsure), "imageUrl": a direct image URL only if one appeared in the results, else null,
 "style": one of running|court|casual|trail|lifestyle|other, "comfortScore": 0-100, "styleScore": 0-100, "durabilityScore": 0-100 or null, "description": one sentence}.
 comfortScore/styleScore are your estimates from reviews; say so in a top-level "scoresNote" string. Output JSON only.`;
 
@@ -35,9 +35,8 @@ comfortScore/styleScore are your estimates from reviews; say so in a top-level "
     if (!r.ok) return json({ error: `upstream ${r.status}`, detail: (await r.text()).slice(0, 300) }, 502);
     const data = await r.json();
     const text: string = data.output_text ?? data.output?.flatMap((o: any) => o.content ?? []).map((c: any) => c.text ?? "").join("") ?? "";
-    const m = text.match(/\{[\s\S]*\}/);
-    if (!m) return json({ error: "no JSON in model output" }, 502);
-    const parsed = JSON.parse(m[0]);
+    const parsed = parseJson(text);
+    if (!parsed) return json({ error: "no parseable JSON in model output", detail: text.slice(0, 700) }, 502);
     const note = typeof parsed.scoresNote === "string" ? parsed.scoresNote : "Comfort and style scores are model estimates from reviews, not measurements";
     const products = (parsed.products ?? []).map((p: any, i: number) => ({
       id: String(p.id ?? `live-${i}`), name: String(p.name ?? "Unknown"), brand: String(p.brand ?? "Unknown"),
@@ -73,5 +72,20 @@ comfortScore/styleScore are your estimates from reviews; say so in a top-level "
   }
 };
 
+/** Model output with web search often carries citations or fences around/inside the JSON. Strip them, then parse. */
+function parseJson(text: string): any | null {
+  const fence = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+  const candidates = [fence?.[1], text].filter(Boolean) as string[];
+  for (const c of candidates) {
+    const start = c.indexOf("{"), end = c.lastIndexOf("}");
+    if (start < 0 || end <= start) continue;
+    const body = c.slice(start, end + 1)
+      .replace(/【[^】]*】/g, "")
+      .replace(/\(\[[^\]]*\]\((https?:[^)]*)\)\)/g, "")
+      .replace(/,\s*([}\]])/g, "$1");
+    try { return JSON.parse(body); } catch { /* next */ }
+  }
+  return null;
+}
 const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : undefined);
 export const config = { path: "/api/search" };

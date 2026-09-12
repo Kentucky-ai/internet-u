@@ -1,189 +1,191 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useProfile } from "../state/profile";
-import { rankProducts, perspectiveLabel } from "../lib/ranking";
-import { searchProducts, type SearchOutcome } from "../lib/products/search";
-import { agentReply } from "../lib/llm/adapter";
-import { money, topKey } from "../lib/profile";
-import type { Ranked, Perspective } from "../lib/types";
+import { money } from "../lib/profile";
+import { modules } from "../lib/modules";
+import { applyOps, defaultTiles, loadTiles, saveTiles, type Tile, type TileOp } from "../lib/tiles";
+import { hubAgent } from "../lib/agent/hub";
 import { PrioritySliders } from "../components/PrioritySliders";
-import { PerspectiveCard, ProductRow } from "../components/ProductCard";
-import { WhyDrawer } from "../components/WhyDrawer";
-import { ApprovalModal } from "../components/ApprovalModal";
 
-type Msg = { id: number; role: "user" | "agent"; text: string; source?: "llm" | "local"; question?: string };
-const PERSPECTIVES: Perspective[] = ["overall", "budget", "comfort", "style"];
-const SNEAKER_RE = /sneaker|shoe|trainer|kicks|runner/i;
+type Msg = { id: number; role: "user" | "agent"; text: string; source?: "llm" | "local"; via?: string };
+type Health = { mode: string; brain?: { chatVia: string; chatModel: string; search: string; imageGeneration: string | null } };
 let msgId = 1;
 
 export function Home() {
   const { profile, setProfile, decisions, addDecision, clearDecisions, user } = useProfile();
-  const [messages, setMessages] = useState<Msg[]>([{ id: 0, role: "agent", text: `Hi. I work from your rules, not a store's algorithm. Your budget is ${money(profile.budget, profile.currency)} and you weight budget, comfort and style at ${profile.priorities.budget}/${profile.priorities.comfort}/${profile.priorities.style}. Ask me to find sneakers and I will show what fits, what does not, and why.` }]);
+  const navigate = useNavigate();
+  const [tiles, setTiles] = useState<Tile[]>(loadTiles);
+  const [messages, setMessages] = useState<Msg[]>([{ id: 0, role: "agent", text: "This is your hub. Ask for anything: I can open a module, add or remove tiles, or request a scoped connection to one of your accounts. I never act on your behalf without approval." }]);
   const [input, setInput] = useState("");
-  const [busy, setBusy] = useState<"idle" | "search" | "reply">("idle");
-  const [outcome, setOutcome] = useState<SearchOutcome | null>(null);
-  const [why, setWhy] = useState<Ranked | null>(null);
-  const [approve, setApprove] = useState<Ranked | null>(null);
-  const [confirmation, setConfirmation] = useState<string | null>(null);
-  const [proposal, setProposal] = useState<{ text: string; apply: () => void } | null>(null);
-  const [flash, setFlash] = useState(false);
-  const abortRef = useRef<AbortController | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [health, setHealth] = useState<Health | null>(null);
+  const [lastAdded, setLastAdded] = useState<string | null>(null);
   const logRef = useRef<HTMLDivElement>(null);
-  const firstRank = useRef(true);
 
-  const ranking = useMemo(() => (outcome ? rankProducts(outcome.products, profile) : null), [outcome, profile]);
-
-  // Re-rank feedback: flash the cards whenever the profile changes after results exist.
-  useEffect(() => {
-    if (!ranking) return;
-    if (firstRank.current) { firstRank.current = false; return; }
-    setFlash(true); const t = setTimeout(() => setFlash(false), 900); return () => clearTimeout(t);
-  }, [ranking]);
+  useEffect(() => { saveTiles(tiles); }, [tiles]);
+  useEffect(() => { fetch("/api/health").then(r => (r.ok ? r.json() : null)).then(h => setHealth(h && h.ok ? h : { mode: "demo" })).catch(() => setHealth({ mode: "demo" })); }, []);
   useEffect(() => { logRef.current?.scrollTo({ top: logRef.current.scrollHeight, behavior: "smooth" }); }, [messages, busy]);
-  useEffect(() => { if (why) setWhy(w => w ? (ranking?.accepted.concat(ranking.rejected).find(x => x.product.id === w.product.id) ?? null) : null); }, [ranking]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const push = (m: Omit<Msg, "id">) => setMessages(ms => [...ms, { ...m, id: msgId++ }]);
+  const push = (m: Omit<Msg, "id">) => { const id = msgId++; setMessages(ms => [...ms, { ...m, id }]); };
 
   const run = useCallback(async (text: string) => {
-    const q = text.trim(); if (!q || busy !== "idle") return;
-    setInput(""); push({ role: "user", text: q });
-    if (!SNEAKER_RE.test(q)) {
-      push({ role: "agent", text: "This proof of concept covers one job: finding sneakers by your rules. Try \"Help me find sneakers.\" Other domains (email, calendar, travel) plug in later through permissioned connectors.", source: "local" });
-      return;
+    const q = text.trim(); if (!q || busy) return;
+    setInput(""); push({ role: "user", text: q }); setBusy(true);
+    const r = await hubAgent(q, profile, tiles);
+    const activeRoutes = new Set(modules.filter(m => m.status === "active" && m.route).map(m => m.route!));
+    const opens = r.ops.filter((o): o is Extract<TileOp, { op: "open" }> => o.op === "open");
+    const open = opens.find(o => activeRoutes.has(o.route));
+    const edits = r.ops.filter((o): o is Exclude<TileOp, { op: "open" }> => o.op !== "open");
+    // An "open" for a module that is not active becomes a permission request instead of a dead route.
+    for (const o of opens) if (!activeRoutes.has(o.route)) {
+      const m = modules.find(x => o.route.includes(x.id));
+      if (m) edits.push({ op: "add", tile: { kind: "permission", title: `Connect: ${m.name}`, span: 4, data: { connector: m.name, scopes: m.permissions, why: `You asked for ${m.name.toLowerCase()}; it is not connected yet.`, state: "requested" } } });
     }
-    abortRef.current?.abort(); const ac = new AbortController(); abortRef.current = ac;
-    setBusy("search"); setConfirmation(null); setProposal(null); firstRank.current = true;
-    const out = await searchProducts(q, profile, ac.signal);
-    if (ac.signal.aborted) return;
-    setOutcome(out);
-    const rk = rankProducts(out.products, profile);
-    setBusy("reply");
-    const reply = await agentReply(q, profile, rk, out.note, ac.signal);
-    if (ac.signal.aborted) return;
-    push({ role: "agent", text: reply.text, source: reply.source, question: reply.clarifyingQuestion });
-    addDecision("recommendation", `Ranked ${out.products.length} sneakers (${out.source}): ${rk.accepted.length} fit your rules, ${rk.rejected.length} set aside. Top: ${rk.best.overall?.product.name ?? "none"}.`);
-    setBusy("idle");
-  }, [busy, profile, addDecision]);
+    if (edits.length) {
+      setTiles(t => applyOps(t, edits));
+      const added = edits.filter(o => o.op === "add").map(o => (o as Extract<TileOp, { op: "add" }>).tile.title);
+      if (added.length) { setLastAdded(added[0]); setTimeout(() => setLastAdded(null), 1600); }
+      addDecision("recommendation", `Hub: ${edits.map(o => (o.op === "add" ? `added "${(o as Extract<TileOp, { op: "add" }>).tile.title}"` : `removed a tile`)).join(", ")} (${r.source}).`);
+    }
+    push({ role: "agent", text: r.reply, source: r.source, via: r.via });
+    setBusy(false);
+    if (open && open.op === "open") navigate(`${open.route}?q=${encodeURIComponent(open.q ?? q)}`);
+  }, [busy, profile, tiles, addDecision, navigate]);
 
-  const onApprove = (r: Ranked) => {
-    setApprove(null);
-    const msg = `Approved for demo purposes. ${r.product.name} (${money(r.product.price, r.product.currency)}) was recorded as your choice. No real purchase was made and no store was contacted.`;
-    setConfirmation(msg);
-    addDecision("approval", `Approved: add ${r.product.name} to cart (demo, no purchase).`);
-    push({ role: "agent", text: msg, source: "local" });
-    // Propose (never apply) a profile update based on what the user actually chose.
-    const w = ranking?.weights; if (!w) return;
-    const strongest = topKey(r.parts);
-    const top = topKey(w);
-    if (strongest !== top && r.parts[strongest] >= 0.7) {
-      setProposal({
-        text: `You chose an option whose strongest attribute is ${strongest}, though you currently weight ${top} highest. Want me to raise ${strongest} by 15 points? I will not change your rules unless you say yes.`,
-        apply: () => { setProfile(p => ({ ...p, priorities: { ...p.priorities, [strongest]: Math.min(100, p.priorities[strongest] + 15) } })); addDecision("profile", `Raised ${strongest} priority by 15 (you approved the proposal).`); setProposal(null); },
-      });
-    }
+  const removeTile = (id: string) => setTiles(t => t.filter(x => x.id !== id));
+  const setPermission = (id: string, state: "approved" | "declined") => {
+    setTiles(t => t.map(x => (x.id === id ? { ...x, data: { ...x.data, state } } : x)));
+    const tile = tiles.find(x => x.id === id);
+    addDecision(state === "approved" ? "approval" : "cancel", `${state === "approved" ? "Approved" : "Declined"} connection: ${tile?.data?.connector ?? "connector"} (${(tile?.data?.scopes ?? []).length} scopes). Demo: no account was actually linked.`);
   };
-  const onCancel = () => { if (approve) addDecision("cancel", `Cancelled: add ${approve.product.name} to cart.`); setApprove(null); };
 
-  const w = ranking?.weights;
-  const budgetPct = Math.min(100, Math.round((profile.budget / 300) * 100));
-  const constraints = [
+  const constraints = useMemo(() => [
     `Max ${money(profile.budget, profile.currency)}`,
     ...(profile.preferences.avoid.length ? [`Avoid ${profile.preferences.avoid.join(", ")}`] : []),
     ...(profile.preferences.avoidStyles.length ? [`No ${profile.preferences.avoidStyles.join(", ")}`] : []),
     ...(profile.preferences.shoeSize != null ? [`Size ${profile.preferences.shoeSize}`] : []),
+    ...(profile.preferences.location ? [`📍 ${profile.preferences.location}`] : []),
     "Approval before any action",
-  ];
+  ], [profile]);
+
+  const render = (t: Tile) => {
+    const cls = `card span-${t.span}${lastAdded === t.title ? " flash" : ""}`;
+    switch (t.kind) {
+      case "hero": return (
+        <section key={t.id} className={`card hero span-${t.span}`}>
+          <div>
+            <div className="pillrow" style={{ marginBottom: 14 }}><span className="pill accent">Your internet advocate</span><span className="pill">One hub for your whole life online</span><span className="pill ok">🔒 Nothing happens without your approval</span></div>
+            <h1>Your internet, working for you.</h1>
+            <p className="lede" style={{ marginTop: 10 }}>Shopping, food, travel, social, email, work: one agent that acts by <b>your</b> rules across all of it, in your browser, and changes this hub on request.</p>
+          </div>
+          <div className="pillrow">{constraints.map(c => <span key={c} className="pill">{c}</span>)}<Link to="/rules" className="btn sm">Edit My Rules →</Link></div>
+        </section>);
+      case "rules": return (
+        <section key={t.id} className={cls}>
+          <div className="kicker">Hard constraints</div><h2>Budget</h2>
+          <div className="big">{money(profile.budget, profile.currency)}</div>
+          <div className="budgetbar"><i style={{ width: `${Math.min(100, Math.round((profile.budget / 300) * 100))}%` }} /></div>
+          <p className="small muted">Every module drops anything above this line, plus your avoid lists and non-negotiables{profile.preferences.notes ? `: "${profile.preferences.notes}"` : ""}.</p>
+          <div style={{ marginTop: 12 }}><Link to="/rules" className="btn sm">Open My Rules</Link></div>
+        </section>);
+      case "priorities": return (
+        <section key={t.id} className={cls}>
+          <div className="kicker">Adjustable priorities</div><h2>How everything gets ranked</h2>
+          <p className="small muted" style={{ marginBottom: 14 }}>Shared by every module. Change it here or in My Rules.</p>
+          <PrioritySliders value={profile.priorities} onChange={pr => setProfile(p => ({ ...p, priorities: pr }))} compact />
+        </section>);
+      case "ask": return (
+        <section key={t.id} className={`card span-${t.span} chat`}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8 }}><div><div className="kicker">Agent</div><h2>Ask your advocate</h2></div><span className="small muted">{user.authenticated ? user.name : "Demo user"}</span></div>
+          <div className="chatlog" ref={logRef} aria-live="polite">
+            {messages.map(m => <div key={m.id} className={`msg ${m.role}`}>{m.text}{m.role === "agent" && m.source && <span className="src">{m.source === "llm" ? `Agent reply via ${m.via ?? "LLM"}` : "Deterministic hub agent (no LLM key)"}</span>}</div>)}
+            {busy && <div className="msg agent"><span className="typing"><i /><i /><i /></span> <span className="small muted">Working on the hub…</span></div>}
+          </div>
+          <form className="chatform" onSubmit={e => { e.preventDefault(); run(input); }}>
+            <input className="input" value={input} onChange={e => setInput(e.target.value)} placeholder="Help me find sneakers… or: add a restaurants tile for tonight" aria-label="Your request" disabled={busy} />
+            <button className="btn primary" type="submit" disabled={busy || !input.trim()}>Send</button>
+          </form>
+          <div className="suggest">
+            <button className="btn sm ghost" onClick={() => run("Help me find sneakers.")} disabled={busy}>Help me find sneakers.</button>
+            <button className="btn sm ghost" onClick={() => run("Add a tile with restaurants for dinner tonight near me that fit my budget")} disabled={busy}>Restaurants tonight</button>
+            <button className="btn sm ghost" onClick={() => run("Show my social profile in the hub")} disabled={busy}>My social profile</button>
+          </div>
+          <div className="gate"><span className="lock">🔒</span><span>The agent can change tiles and search. Buying, booking, sending, posting and connecting accounts always stop for your approval.</span></div>
+        </section>);
+      case "modules": return (
+        <section key={t.id} className={cls}>
+          <div className="section-head" style={{ margin: "0 0 12px" }}><div><div className="kicker">Modules</div><h2>Your life online, by your rules</h2></div><span className="small muted">1 active · {modules.length - 1} connectors planned, each with explicit scopes</span></div>
+          <div className="modules">
+            {modules.map(m => m.status === "active" && m.route ? (
+              <Link key={m.id} to={m.route} className="card module active">
+                <span className="pill ok status">Active</span><div className="icon">{m.icon}</div><h3>{m.name}</h3><p className="small muted">{m.tagline}</p>
+                <div className="perm">{m.permissions.map(p => <span key={p}>{p}</span>)}</div>
+                <span className="btn sm primary" style={{ alignSelf: "flex-start" }}>Open →</span>
+              </Link>
+            ) : (
+              <div key={m.id} className="card module planned">
+                <span className="pill status">Planned</span><div className="icon">{m.icon}</div><h3>{m.name}</h3><p className="small muted">{m.tagline}</p>
+                <div className="perm">{m.permissions.map(p => <span key={p}>{p}</span>)}</div>
+              </div>
+            ))}
+          </div>
+        </section>);
+      case "brain": return (
+        <section key={t.id} className={cls}>
+          <div className="kicker">Brain</div><h2>Swappable model</h2>
+          <div className="brain" style={{ marginTop: 10 }}>
+            <div className="row"><span>Mode</span><b>{health ? (health.mode === "live-capable" ? "Live" : "Demo") : "…"}</b></div>
+            <div className="row"><span>Agent + chat</span><b>{health?.brain ? `${health.brain.chatModel} · ${health.brain.chatVia}` : health ? "rules engine" : "…"}</b></div>
+            <div className="row"><span>Search</span><b>{health?.brain?.search ?? (health ? "demo catalog" : "…")}</b></div>
+            <div className="row"><span>Image renders</span><b>{health?.brain?.imageGeneration ?? "off (set OPENROUTER_API_KEY)"}</b></div>
+            <div className="row"><span>Ranking</span><b>deterministic, local</b></div>
+          </div>
+          <p className="small muted" style={{ marginTop: 10 }}>OpenRouter or the Netlify AI Gateway plug in server-side; the ranking never depends on the model.</p>
+        </section>);
+      case "decisions": return (
+        <section key={t.id} className={cls}>
+          <div className="section-head" style={{ margin: "0 0 8px" }}><div><div className="kicker">Memory</div><h2>Recent decisions</h2></div>{decisions.length > 0 && <button className="btn sm ghost" onClick={clearDecisions}>Clear</button>}</div>
+          {decisions.length === 0 ? <div className="empty">No decisions yet. Recommendations, approvals, connections and rule changes land here.</div> : (
+            <ul className="decisions">{decisions.slice(0, 7).map(d => <li key={d.id}><time dateTime={d.at}>{new Date(d.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</time><span><span className={`badge ${d.kind}`}>{d.kind}</span>{d.text}</span></li>)}</ul>
+          )}
+        </section>);
+      case "list": return (
+        <section key={t.id} className={cls}>
+          <div className="section-head" style={{ margin: "0 0 6px" }}><div><div className="kicker">Agent tile · {t.data?.provider ?? "search"}</div><h2>{t.title}</h2></div><button className="btn sm ghost" onClick={() => removeTile(t.id)} aria-label={`Remove ${t.title}`}>Remove</button></div>
+          {t.data?.intro && <p className="small muted" style={{ marginBottom: 10 }}>{t.data.intro}</p>}
+          {!t.data?.items?.length ? <div className="empty small">Nothing found yet.</div> : (
+            <ul className="rules">{t.data.items.map((it, i) => (
+              <li key={i} className={it.fits === false ? "bad" : "ok"}><span className="ic">{it.fits === false ? "✕" : "✓"}</span>
+                <span style={{ flex: 1 }}><b>{it.url ? <a href={it.url} target="_blank" rel="noreferrer noopener">{it.name}</a> : it.name}</b>{it.price ? <span className="muted"> · {it.price}</span> : null}{it.subtitle && <><br /><span className="small muted">{it.subtitle}</span></>}{it.note && <><br /><span className="small" style={{ color: "var(--warn)" }}>{it.note}</span></>}</span>
+              </li>))}</ul>
+          )}
+        </section>);
+      case "note": return (
+        <section key={t.id} className={cls}>
+          <div className="section-head" style={{ margin: "0 0 6px" }}><div><div className="kicker">Agent tile</div><h2>{t.title}</h2></div><button className="btn sm ghost" onClick={() => removeTile(t.id)}>Remove</button></div>
+          <p>{t.data?.text}</p>
+        </section>);
+      case "permission": return (
+        <section key={t.id} className={cls} style={{ borderColor: "var(--warn)" }}>
+          <div className="kicker">🔒 Permission request</div><h2>{t.title}</h2>
+          <p className="small muted" style={{ margin: "6px 0 10px" }}>{t.data?.why}</p>
+          <ul className="rules">{(t.data?.scopes ?? []).map(s => <li key={s} className="na"><span className="ic">•</span><span>{s}</span></li>)}</ul>
+          {t.data?.state === "approved" ? <div className="notice" style={{ marginTop: 12 }}>Approved for demo purposes. No account was linked; this is where the {t.data.connector} connector would start with exactly these scopes.</div>
+            : t.data?.state === "declined" ? <div className="notice warn" style={{ marginTop: 12 }}>Declined. Nothing was connected and I will not ask again unless you do.</div>
+            : <div className="pillrow" style={{ marginTop: 12 }}><button className="btn sm" onClick={() => setPermission(t.id, "declined")}>Decline</button><button className="btn sm primary" onClick={() => setPermission(t.id, "approved")}>Approve these scopes</button></div>}
+          <div style={{ marginTop: 10 }}><button className="btn sm ghost" onClick={() => removeTile(t.id)}>Remove tile</button></div>
+        </section>);
+      default: return null;
+    }
+  };
 
   return (
     <>
-      <div className="bento">
-        <section className="card hero span-7">
-          <div>
-            <div className="pillrow" style={{ marginBottom: 14 }}><span className="pill accent">AI advocate</span><span className="pill">Guided by your rules</span><span className="pill ok">🔒 Nothing happens without your approval</span></div>
-            <h1>Your internet, working for you.</h1>
-            <p className="lede" style={{ marginTop: 10 }}>Internet U recommends by <b>your</b> budget, priorities and non-negotiables. Not by ads, popularity, or what a platform wants you to buy.</p>
-          </div>
-          <div className="pillrow">{constraints.map(c => <span key={c} className="pill">{c}</span>)}<Link to="/rules" className="btn sm">Edit My Rules →</Link></div>
-        </section>
-
-        <section className="card span-5">
-          <div className="kicker">Hard constraint</div>
-          <h2>Budget</h2>
-          <div className="big">{money(profile.budget, profile.currency)}</div>
-          <div className="budgetbar"><i style={{ width: `${budgetPct}%` }} /></div>
-          <p className="small muted">Anything above this line is set aside, no matter how well it scores. {ranking ? `${ranking.rejected.length} of ${ranking.accepted.length + ranking.rejected.length} options broke a rule in the last search.` : "Run a search to see it applied."}</p>
-        </section>
-
-        <section className="card span-5">
-          <div className="kicker">Adjustable priorities</div>
-          <h2>How I rank what fits</h2>
-          <p className="small muted" style={{ marginBottom: 14 }}>Move a slider and the recommendations below re-rank instantly.</p>
-          <PrioritySliders value={profile.priorities} onChange={pr => setProfile(p => ({ ...p, priorities: pr }))} />
-        </section>
-
-        <section className="card span-7 chat">
-          <div className="row" style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-            <div><div className="kicker">Start with a request</div><h2>Ask your advocate</h2></div>
-            <span className="small muted">{user.authenticated ? user.name : "Demo user"}</span>
-          </div>
-          <div className="chatlog" ref={logRef} aria-live="polite">
-            {messages.map(m => (
-              <div key={m.id} className={`msg ${m.role}`}>
-                {m.text}{m.question && <><br /><i>{m.question}</i></>}
-                {m.role === "agent" && m.source && <span className="src">{m.source === "llm" ? "LLM reply over deterministic ranking" : "Deterministic reply (no LLM key needed)"}</span>}
-              </div>
-            ))}
-            {busy !== "idle" && <div className="msg agent"><span className="typing"><i /><i /><i /></span> <span className="small muted">{busy === "search" ? "Searching products, then applying your rules…" : "Writing the explanation…"}</span></div>}
-          </div>
-          <form className="chatform" onSubmit={e => { e.preventDefault(); run(input); }}>
-            <input className="input" value={input} onChange={e => setInput(e.target.value)} placeholder="Help me find sneakers." aria-label="Your request" disabled={busy !== "idle"} />
-            <button className="btn primary" type="submit" disabled={busy !== "idle" || !input.trim()}>Send</button>
-          </form>
-          <div className="suggest"><button className="btn sm ghost" onClick={() => run("Help me find sneakers.")} disabled={busy !== "idle"}>Help me find sneakers.</button><button className="btn sm ghost" onClick={() => run("Find me comfortable running shoes")} disabled={busy !== "idle"}>Comfortable running shoes</button></div>
-          <div className="gate"><span className="lock">🔒</span><span>Consequential actions (cart, purchase, profile changes) always stop for your explicit approval.</span></div>
-        </section>
-      </div>
-
-      {confirmation && <div className="notice" style={{ marginTop: 16 }}>{confirmation}</div>}
-      {proposal && (
-        <div className="notice info" style={{ marginTop: 12, display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
-          <span style={{ flex: 1 }}><b>Proposed rule update:</b> {proposal.text}</span>
-          <button className="btn sm" onClick={() => { addDecision("profile", "Declined a proposed priority change."); setProposal(null); }}>No, keep my rules</button>
-          <button className="btn sm primary" onClick={proposal.apply}>Yes, update</button>
-        </div>
-      )}
-
-      {ranking && w && (
-        <>
-          <div className="section-head">
-            <div><h2>Recommendations by your rules</h2><p className="small muted">{outcome?.note}. Weights now: budget {Math.round(w.budget * 100)}%, comfort {Math.round(w.comfort * 100)}%, style {Math.round(w.style * 100)}%.</p></div>
-            <span className={`pill ${outcome?.source === "live" ? "ok" : "warn"}`}>{outcome?.source === "live" ? "Live data" : "Demo catalog"}</span>
-          </div>
-          {ranking.accepted.length === 0 ? (
-            <div className="empty">No option meets your rules. Raise the budget or clear an avoid list in <Link to="/rules">My Rules</Link>.</div>
-          ) : (
-            <div className="perspectives">{PERSPECTIVES.map(k => <PerspectiveCard key={k} label={perspectiveLabel[k]} r={ranking.best[k]} flash={flash} onWhy={setWhy} onAct={setApprove} />)}</div>
-          )}
-
-          {ranking.accepted.length > 0 && (
-            <>
-              <div className="section-head"><h2>Everything that meets your rules</h2><span className="small muted">{ranking.accepted.length} options, ranked</span></div>
-              <div className="list">{ranking.accepted.map((r, i) => <ProductRow key={r.product.id} r={r} index={i} onWhy={setWhy} onAct={setApprove} />)}</div>
-            </>
-          )}
-
-          <div className="section-head"><h2 style={{ color: "var(--bad)" }}>Rejected by your rules</h2><span className="small muted">{ranking.rejected.length} set aside · shown, never hidden</span></div>
-          {ranking.rejected.length === 0 ? <div className="empty">Nothing was rejected.</div> : <div className="list rejected">{ranking.rejected.map(r => <ProductRow key={r.product.id} r={r} rejected onWhy={setWhy} />)}</div>}
-        </>
-      )}
-
-      <div className="section-head"><h2>Recent decisions</h2>{decisions.length > 0 && <button className="btn sm ghost" onClick={clearDecisions}>Clear</button>}</div>
-      {decisions.length === 0 ? <div className="empty">No decisions yet. Recommendations, approvals and rule changes land here.</div> : (
-        <div className="card soft"><ul className="decisions">{decisions.slice(0, 8).map(d => <li key={d.id}><time dateTime={d.at}>{new Date(d.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</time><span><span className={`badge ${d.kind}`}>{d.kind}</span>{d.text}</span></li>)}</ul></div>
-      )}
-
-      {why && ranking && <WhyDrawer r={why} profile={profile} weights={ranking.weights} onClose={() => setWhy(null)} />}
-      {approve && <ApprovalModal r={approve} profile={profile} onCancel={onCancel} onApprove={onApprove} />}
+      <div className="bento">{tiles.map(render)}</div>
+      <p className="small muted" style={{ marginTop: 18, display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+        <span>{tiles.filter(t => t.createdBy === "agent").length} agent-added tile{tiles.filter(t => t.createdBy === "agent").length === 1 ? "" : "s"}. Layout is saved in this browser.</span>
+        <button className="btn sm ghost" onClick={() => setTiles(defaultTiles)}>Reset layout</button>
+      </p>
     </>
   );
 }
