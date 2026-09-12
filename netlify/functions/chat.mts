@@ -19,8 +19,8 @@ export default async (req: Request) => {
   if (!orKey && !oaKey) return json({ error: "no LLM key configured", fallback: true }, 503);
   const body = await req.json().catch(() => ({}));
 
-  // OpenRouter when its key is set; otherwise OpenAI, honoring OPENAI_BASE_URL (Netlify AI Gateway or any proxy).
-  const useOr = !!orKey;
+  // OpenAI through OPENAI_BASE_URL when a gateway injected one (Netlify AI Gateway); else OpenRouter if set; else OpenAI direct.
+  const useOr = !!orKey && !(oaKey && process.env.OPENAI_BASE_URL);
   const oaBase = (process.env.OPENAI_BASE_URL || "https://api.openai.com/v1").replace(/\/$/, "");
   const url = useOr ? "https://openrouter.ai/api/v1/chat/completions" : `${oaBase}/chat/completions`;
   const model = useOr ? (process.env.OPENROUTER_MODEL || "openai/gpt-4.1-mini") : (process.env.OPENAI_CHAT_MODEL || "gpt-4.1-mini");

@@ -43,7 +43,7 @@ comfortScore/styleScore are your estimates from reviews; say so in a top-level "
       id: String(p.id ?? `live-${i}`), name: String(p.name ?? "Unknown"), brand: String(p.brand ?? "Unknown"),
       price: Number(p.price), currency: String(p.currency ?? currency), productUrl: p.productUrl || undefined, imageUrl: p.imageUrl || undefined,
       style: p.style || "other", comfortScore: num(p.comfortScore), styleScore: num(p.styleScore), durabilityScore: num(p.durabilityScore),
-      description: p.description || undefined, source: "live (web search)", scoresNote: note,
+      description: p.description || undefined, source: provider.includes("web search") ? "live (web search)" : "live (model knowledge, unverified)", scoresNote: note,
     })).filter((p: any) => Number.isFinite(p.price) && p.price > 0);
     return json({ products, provider });
   } catch (e: any) {
