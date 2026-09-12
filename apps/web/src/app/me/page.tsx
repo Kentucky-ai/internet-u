@@ -21,7 +21,7 @@ import {
 import { screenWithGuardian, derivedProtections } from "@/lib/guardian";
 import { hydrateFromVault } from "@/lib/persistence";
 import { loadDecisions, DECISIONS_EVENT, recordDecision, type Decision } from "@/lib/decisions";
-import { getUid, UID_HEADER, clearVault } from "@/lib/vault-client";
+import { getUid, UID_HEADER, clearVault, pushVault } from "@/lib/vault-client";
 import { LocationControl } from "@/components/guardian-card";
 
 type ListKey = "faithPractices" | "lifestyle" | "abilities" | "values" | "protections" | "goals";
@@ -135,8 +135,11 @@ export default function AboutMePage() {
     setServerBusy(true);
     setServerResult(null);
     try {
-      // Persist first so the server sees the bio on screen, not a stale one.
-      persist(bio);
+      // Persist first — and wait for it — so the server gate reads the bio on
+      // screen, not a stale or missing one.
+      const saved = saveUserBio(bio, { remote: false });
+      setBio(saved);
+      await pushVault({ bio: saved });
       const uid = getUid();
       const res = await fetch("/api/guardian", {
         method: "POST",

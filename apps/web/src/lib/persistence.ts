@@ -5,7 +5,7 @@
 import { loadUserProfile, saveUserProfile, type UserProfile } from "./user-profile";
 import { loadUserBio, saveUserBio, normalizeBio, type UserBio } from "./user-bio";
 import { loadDecisions, writeDecisions, type Decision } from "./decisions";
-import { pullVault, type VaultDoc } from "./vault-client";
+import { pullVault, pushVault, type VaultDoc } from "./vault-client";
 
 export interface HydrationResult {
   backend: "netlify-blobs" | "local-file" | null;
@@ -25,7 +25,10 @@ export function hydrateFromVault(): Promise<HydrationResult> {
     const localBio = loadUserBio();
     const localDecisions = loadDecisions();
     if (!doc || (!doc.profile && !doc.bio && !doc.decisions)) {
-      return { backend: doc?.backend ?? null, fromVault: false, profile: localProfile, bio: localBio, decisions: localDecisions };
+      // First visit on this id: seed the vault so server-side gates read the
+      // same bio the page shows from the very first request.
+      const seeded = await pushVault({ profile: localProfile, bio: localBio, decisions: localDecisions });
+      return { backend: seeded?.backend ?? doc?.backend ?? null, fromVault: false, profile: localProfile, bio: localBio, decisions: localDecisions };
     }
     const profile = doc.profile ? saveUserProfile({ ...localProfile, ...(doc.profile as UserProfile) }, { remote: false }) : localProfile;
     const bio = doc.bio ? saveUserBio(normalizeBio(doc.bio as Partial<UserBio>), { remote: false }) : localBio;
