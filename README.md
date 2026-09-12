@@ -52,6 +52,11 @@ runs on deterministic local logic.
 
 ## How live search and fallback work
 
+On Netlify, with the team's **AI Gateway** enabled, `OPENAI_API_KEY` and `OPENAI_BASE_URL`
+are injected into the functions automatically, so live search and LLM replies work in
+production with no keys configured by hand. `GET /api/health` reports which integrations
+are present (names only). Locally without keys, everything runs in demo mode.
+
 - `netlify/functions/search.mts` (`POST /api/search`) asks OpenAI web search for real
   products around the user's budget and returns them in the normalized `Product` shape.
   Comfort/style scores from live data are model estimates and are labeled as such in the UI.
