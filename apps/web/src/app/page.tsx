@@ -13,8 +13,9 @@ import { SNEAKER_CATALOG } from "@/lib/sneakers-data";
 import { rankSneakers, EvaluationResult, RankedPerspectiveResults } from "@/lib/ranking";
 import { AdvocateTile, INITIAL_TILES, createTileFromPrompt } from "@/lib/tiles-data";
 import { WhyThisModal } from "@/components/why-this-modal";
-import { ApprovalModal } from "@/components/approval-modal";
+import { ApprovalModal, CustomActionItem } from "@/components/approval-modal";
 import { TileDetailModal } from "@/components/tile-detail-modal";
+import { TileWorkspaceView } from "@/components/tile-workspace-view";
 import { SupervisedLearningCard } from "@/components/supervised-learning-card";
 import { FutureConnectorsCard } from "@/components/future-connectors-card";
 import { ExaWebSearchCard } from "@/components/exa-web-search-card";
@@ -22,8 +23,9 @@ import { ExaWebSearchCard } from "@/components/exa-web-search-card";
 type PerspectiveTab = "overall" | "budget" | "comfort" | "style";
 
 export default function HomePage() {
-  // Navigation mode: "portal" (multi-tile canvas) or "sneaker-deep-dive"
-  const [activeView, setActiveView] = useState<"portal" | "sneaker-deep-dive">("portal");
+  // Navigation mode: "portal" (multi-tile canvas), "sneaker-deep-dive", or "tile-workspace"
+  const [activeView, setActiveView] = useState<"portal" | "sneaker-deep-dive" | "tile-workspace">("portal");
+  const [activeWorkspaceTile, setActiveWorkspaceTile] = useState<AdvocateTile | null>(null);
 
   // Tiles State
   const [tiles, setTiles] = useState<AdvocateTile[]>(INITIAL_TILES);
@@ -38,6 +40,7 @@ export default function HomePage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [inspectingItem, setInspectingItem] = useState<EvaluationResult | null>(null);
   const [approvingItem, setApprovingItem] = useState<EvaluationResult | null>(null);
+  const [customApprovingItem, setCustomApprovingItem] = useState<CustomActionItem | null>(null);
   const [purchasedNotice, setPurchasedNotice] = useState<string | null>(null);
   const [showChatPanel, setShowChatPanel] = useState(false);
 
@@ -94,6 +97,16 @@ export default function HomePage() {
     saveUserProfile(updated);
   };
 
+  // Open any tile's dedicated workspace
+  const handleOpenTileWorkspace = (tile: AdvocateTile) => {
+    if (tile.isSpecialSneakerTile) {
+      setActiveView("sneaker-deep-dive");
+    } else {
+      setActiveWorkspaceTile(tile);
+      setActiveView("tile-workspace");
+    }
+  };
+
   // Spin up a new advocate tile
   const handleCreateTile = (e: React.FormEvent) => {
     e.preventDefault();
@@ -109,6 +122,8 @@ export default function HomePage() {
     const newTile = createTileFromPrompt(prompt);
     setTiles([newTile, ...tiles]);
     setCommandPrompt("");
+    setActiveWorkspaceTile(newTile);
+    setActiveView("tile-workspace");
     setTileCreatedNotice(`Spun up new advocate tile: "${newTile.title}"`);
     setTimeout(() => setTileCreatedNotice(null), 4000);
   };
@@ -218,7 +233,7 @@ export default function HomePage() {
           </div>
 
           <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-            {activeView === "sneaker-deep-dive" && (
+            {(activeView === "sneaker-deep-dive" || activeView === "tile-workspace") && (
               <button
                 type="button"
                 onClick={() => setActiveView("portal")}
@@ -613,23 +628,46 @@ export default function HomePage() {
                               <span>&rarr;</span>
                             </button>
                           ) : (
-                            <button
-                              type="button"
-                              onClick={() => setActiveModalTile(tile)}
-                              style={{
-                                width: "100%",
-                                padding: "10px 16px",
-                                borderRadius: "10px",
-                                backgroundColor: "#ffffff",
-                                color: "#010507",
-                                border: "1px solid #dbdbe5",
-                                fontSize: "13px",
-                                fontWeight: 600,
-                                cursor: "pointer",
-                              }}
-                            >
-                              {tile.highlightData.actionLabel} &rarr;
-                            </button>
+                            <div style={{ display: "flex", gap: "8px" }}>
+                              <button
+                                type="button"
+                                onClick={() => handleOpenTileWorkspace(tile)}
+                                style={{
+                                  flex: 1,
+                                  padding: "10px 14px",
+                                  borderRadius: "10px",
+                                  backgroundColor: "#010507",
+                                  color: "#ffffff",
+                                  border: "none",
+                                  fontSize: "13px",
+                                  fontWeight: 600,
+                                  cursor: "pointer",
+                                  display: "flex",
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                  gap: "6px",
+                                }}
+                              >
+                                <span>Open Workspace</span>
+                                <span>&rarr;</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setActiveModalTile(tile)}
+                                title="View Guardrail Summary"
+                                style={{
+                                  padding: "10px 12px",
+                                  borderRadius: "10px",
+                                  backgroundColor: "#f4f4f5",
+                                  color: "#57575b",
+                                  border: "1px solid #dbdbe5",
+                                  fontSize: "13px",
+                                  cursor: "pointer",
+                                }}
+                              >
+                                ℹ
+                              </button>
+                            </div>
                           )}
                         </div>
                       </div>
@@ -648,6 +686,12 @@ export default function HomePage() {
               />
               <FutureConnectorsCard />
             </div>
+          ) : activeView === "tile-workspace" && activeWorkspaceTile ? (
+            <TileWorkspaceView
+              tile={activeWorkspaceTile}
+              onBack={() => setActiveView("portal")}
+              onStageAction={(item) => setCustomApprovingItem(item)}
+            />
           ) : (
             /* ========================================================================= */
             /* VIEW 2: SNEAKER SHOPPING DEEP DIVE EXPERIENCE (Expanded Full View)        */
@@ -1372,18 +1416,28 @@ export default function HomePage() {
       />
 
       {/* Consequential Action Approval Modal */}
-      <ApprovalModal
-        evaluation={approvingItem}
-        onClose={() => setApprovingItem(null)}
-        onApproved={(name) => {
-          setPurchasedNotice(name);
-        }}
-      />
+      {(approvingItem || customApprovingItem) && (
+        <ApprovalModal
+          evaluation={approvingItem}
+          customAction={customApprovingItem}
+          onClose={() => {
+            setApprovingItem(null);
+            setCustomApprovingItem(null);
+          }}
+          onApproved={(name) => {
+            setPurchasedNotice(name);
+            setApprovingItem(null);
+            setCustomApprovingItem(null);
+            setTimeout(() => setPurchasedNotice(null), 5000);
+          }}
+        />
+      )}
 
       {/* General Tile Detail / Action Modal */}
       <TileDetailModal
         tile={activeModalTile}
         onClose={() => setActiveModalTile(null)}
+        onOpenWorkspace={handleOpenTileWorkspace}
       />
     </div>
   );

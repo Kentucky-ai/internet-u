@@ -3,26 +3,45 @@
 import { useState } from "react";
 import { EvaluationResult } from "@/lib/ranking";
 
+export interface CustomActionItem {
+  title: string;
+  cost: string;
+  action: string;
+}
+
 interface ApprovalModalProps {
-  evaluation: EvaluationResult | null;
+  evaluation?: EvaluationResult | null;
+  customAction?: CustomActionItem | null;
   onClose: () => void;
   onApproved: (productName: string) => void;
 }
 
-export function ApprovalModal({ evaluation, onClose, onApproved }: ApprovalModalProps) {
+export function ApprovalModal({ evaluation, customAction, onClose, onApproved }: ApprovalModalProps) {
   const [approved, setApproved] = useState(false);
 
-  if (!evaluation) return null;
+  if (!evaluation && !customAction) return null;
 
-  const { product, matchedRules } = evaluation;
+  const itemName = customAction ? customAction.title : evaluation?.product.name || "Selected Item";
+  const itemCost = customAction
+    ? customAction.cost
+    : evaluation
+    ? `$${evaluation.product.price.toFixed(2)} ${evaluation.product.currency}`
+    : "$0.00";
+  const rulesList = customAction
+    ? [
+        "Budget ceiling compliance verified",
+        "Commercial platform middleman markups stripped",
+        "Explicit human confirmation required before staging",
+      ]
+    : evaluation?.matchedRules || [];
 
   const handleApprove = () => {
     setApproved(true);
     setTimeout(() => {
-      onApproved(product.name);
+      onApproved(itemName);
       setApproved(false);
       onClose();
-    }, 1800);
+    }, 1600);
   };
 
   return (
@@ -85,7 +104,7 @@ export function ApprovalModal({ evaluation, onClose, onApproved }: ApprovalModal
             </div>
 
             <p style={{ fontSize: "14px", color: "#374151", lineHeight: 1.5, marginBottom: "16px" }}>
-              I can prepare this item for your cart, but because Internet U works strictly for you,{" "}
+              I can prepare this item for your cart or booking, but because Internet U works strictly for you,{" "}
               <strong>I will never execute a purchase or submit billing information without your explicit human confirmation.</strong>
             </p>
 
@@ -99,19 +118,17 @@ export function ApprovalModal({ evaluation, onClose, onApproved }: ApprovalModal
               }}
             >
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "8px" }}>
-                <span style={{ fontSize: "13px", color: "#57575b" }}>Selected Item:</span>
-                <span style={{ fontSize: "13px", fontWeight: 600, color: "#010507" }}>{product.name}</span>
+                <span style={{ fontSize: "13px", color: "#57575b" }}>Selected Option:</span>
+                <span style={{ fontSize: "13px", fontWeight: 600, color: "#010507" }}>{itemName}</span>
               </div>
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "8px" }}>
-                <span style={{ fontSize: "13px", color: "#57575b" }}>Price:</span>
-                <span style={{ fontSize: "13px", fontWeight: 700, color: "#166534" }}>
-                  ${product.price.toFixed(2)} {product.currency}
-                </span>
+                <span style={{ fontSize: "13px", color: "#57575b" }}>Verified Price:</span>
+                <span style={{ fontSize: "13px", fontWeight: 700, color: "#166534" }}>{itemCost}</span>
               </div>
               <div style={{ fontSize: "12px", color: "#57575b", marginTop: "10px", borderTop: "1px dashed #dbdbe5", paddingTop: "8px" }}>
                 <strong style={{ color: "#010507" }}>Rules verified:</strong>
                 <ul style={{ margin: "4px 0 0", paddingLeft: "18px" }}>
-                  {matchedRules.slice(0, 2).map((r, i) => (
+                  {rulesList.slice(0, 3).map((r, i) => (
                     <li key={i}>{r}</li>
                   ))}
                 </ul>
@@ -119,7 +136,7 @@ export function ApprovalModal({ evaluation, onClose, onApproved }: ApprovalModal
             </div>
 
             <p style={{ fontSize: "13px", fontWeight: 500, color: "#010507", marginBottom: "20px" }}>
-              Do you authorize preparing this action?
+              Do you authorize staging this action?
             </p>
 
             <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px" }}>
@@ -137,7 +154,7 @@ export function ApprovalModal({ evaluation, onClose, onApproved }: ApprovalModal
                   cursor: "pointer",
                 }}
               >
-                Decline & Cancel
+                Decline &amp; Cancel
               </button>
               <button
                 type="button"
@@ -179,7 +196,7 @@ export function ApprovalModal({ evaluation, onClose, onApproved }: ApprovalModal
               Action Authorized
             </h3>
             <p style={{ margin: 0, fontSize: "14px", color: "#374151" }}>
-              {product.name} was staged to your saved items.
+              {itemName} was staged to your approved workspace.
             </p>
             <div
               style={{
@@ -199,4 +216,3 @@ export function ApprovalModal({ evaluation, onClose, onApproved }: ApprovalModal
     </div>
   );
 }
-

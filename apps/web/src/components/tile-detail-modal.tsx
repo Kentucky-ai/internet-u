@@ -6,12 +6,22 @@ import { AdvocateTile } from "@/lib/tiles-data";
 interface TileDetailModalProps {
   tile: AdvocateTile | null;
   onClose: () => void;
+  onOpenWorkspace?: (tile: AdvocateTile) => void;
 }
 
-export function TileDetailModal({ tile, onClose }: TileDetailModalProps) {
+export function TileDetailModal({ tile, onClose, onOpenWorkspace }: TileDetailModalProps) {
   const [approvedAction, setApprovedAction] = useState<string | null>(null);
 
   if (!tile) return null;
+
+  const handleOpenWorkspace = () => {
+    if (onOpenWorkspace) {
+      onClose();
+      onOpenWorkspace(tile);
+    } else {
+      setApprovedAction(tile.highlightData.actionLabel);
+    }
+  };
 
   return (
     <div
@@ -155,18 +165,39 @@ export function TileDetailModal({ tile, onClose }: TileDetailModalProps) {
 
         {/* Confirmation or Action button */}
         {approvedAction ? (
-          <div
-            style={{
-              padding: "12px 16px",
-              backgroundColor: "#dcfce7",
-              color: "#166534",
-              borderRadius: "10px",
-              fontSize: "13px",
-              fontWeight: 500,
-              textAlign: "center",
-            }}
-          >
-            ✓ Action Authorized for demo: &ldquo;{approvedAction}&rdquo;. No external charge was made.
+          <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+            <div
+              style={{
+                padding: "12px 16px",
+                backgroundColor: "#dcfce7",
+                color: "#166534",
+                borderRadius: "10px",
+                fontSize: "13px",
+                fontWeight: 500,
+                textAlign: "center",
+              }}
+            >
+              ✓ Action Authorized for demo: &ldquo;{approvedAction}&rdquo;. No external charge was made.
+            </div>
+            {onOpenWorkspace && (
+              <button
+                type="button"
+                onClick={handleOpenWorkspace}
+                style={{
+                  width: "100%",
+                  padding: "10px 16px",
+                  borderRadius: "8px",
+                  border: "none",
+                  backgroundColor: "#010507",
+                  color: "#ffffff",
+                  fontSize: "13px",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                Go to Live Workspace &rarr;
+              </button>
+            )}
           </div>
         ) : (
           <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px" }}>
@@ -187,9 +218,9 @@ export function TileDetailModal({ tile, onClose }: TileDetailModalProps) {
             </button>
             <button
               type="button"
-              onClick={() => setApprovedAction(tile.highlightData.actionLabel)}
+              onClick={handleOpenWorkspace}
               style={{
-                padding: "8px 20px",
+                padding: "10px 20px",
                 borderRadius: "8px",
                 border: "none",
                 backgroundColor: "#010507",
@@ -199,7 +230,7 @@ export function TileDetailModal({ tile, onClose }: TileDetailModalProps) {
                 cursor: "pointer",
               }}
             >
-              {tile.highlightData.actionLabel} &rarr;
+              Open Workspace &rarr;
             </button>
           </div>
         )}
@@ -207,4 +238,3 @@ export function TileDetailModal({ tile, onClose }: TileDetailModalProps) {
     </div>
   );
 }
-
