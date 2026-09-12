@@ -19,6 +19,7 @@ import { SupervisedLearningCard } from "@/components/supervised-learning-card";
 import { FutureConnectorsCard } from "@/components/future-connectors-card";
 import { ExaWebSearchCard } from "@/components/exa-web-search-card";
 import { GuardianCard } from "@/components/guardian-card";
+import { AdvocateTools } from "@/components/advocate-tools";
 import { UserBio, DEFAULT_USER_BIO, BIO_UPDATED_EVENT, summarizeBio } from "@/lib/user-bio";
 import { screenWithGuardian } from "@/lib/guardian";
 import { hydrateFromVault } from "@/lib/persistence";
@@ -184,6 +185,10 @@ export default function HomePage() {
         {
           title: "Audit rental lease terms",
           message: "Screen 2-bedroom rental listings for broker fee traps.",
+        },
+        {
+          title: "What are you protecting me from?",
+          message: "Read my rules and bio and tell me what you will refuse on my behalf, and why.",
         },
       ],
       available: "always",
@@ -1461,7 +1466,7 @@ export default function HomePage() {
                 <CopilotChat
                   className="ck-chat"
                   labels={{
-                    welcomeMessageText: `Hello! I am your Internet U advocate. Tell me what you'd like to do or ask about your active tiles and rules.`,
+                    welcomeMessageText: `I am your Internet U advocate. I can search the live web (screened by your Guardian), rank sneakers against your rules, spin up tiles, stage a purchase for your approval, and propose lessons you can accept or reject. Nothing gets past your bio.`,
                     chatInputPlaceholder: "Ask your advocate...",
                   }}
                 />
@@ -1470,6 +1475,23 @@ export default function HomePage() {
           )}
         </div>
       </main>
+
+      {/* The advocate's tools — registered for the chat agent whether or not the panel is open */}
+      <AdvocateTools
+        profile={profile}
+        bio={bio}
+        onProfileUpdated={setProfile}
+        onBioUpdated={setBio}
+        onOpenSneakers={() => setActiveView("sneaker-deep-dive")}
+        onStagePurchase={(evaluation) => setApprovingItem(evaluation)}
+        onCreateTile={(request) => {
+          const tile = createTileFromPrompt(request);
+          setTiles((prev) => [tile, ...prev]);
+          setTileCreatedNotice(`Your advocate spun up: "${tile.title}"`);
+          setTimeout(() => setTileCreatedNotice(null), 4000);
+          return { title: tile.title };
+        }}
+      />
 
       {/* Why This Explanation Modal */}
       <WhyThisModal
