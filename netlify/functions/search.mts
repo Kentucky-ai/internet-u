@@ -5,8 +5,10 @@ const json = (body: unknown, status = 200) => new Response(JSON.stringify(body),
 
 export default async (req: Request) => {
   if (req.method !== "POST") return json({ error: "POST only" }, 405);
-  const key = process.env.OPENAI_API_KEY;
+  const key = process.env.OPENAI_API_KEY?.trim();
   if (!key) return json({ error: "OPENAI_API_KEY not configured", fallback: true }, 503);
+  // Netlify AI Gateway (and other proxies) inject OPENAI_BASE_URL alongside the key.
+  const base = (process.env.OPENAI_BASE_URL || "https://api.openai.com/v1").replace(/\/$/, "");
   const { query = "sneakers", budget = 150, currency = "USD" } = await req.json().catch(() => ({}));
 
   const prompt = `Search the web for currently available ${query} for sale online. Return 8 real products as a JSON object {"products":[...]}.
@@ -16,12 +18,20 @@ Each product: {"id": string, "name": string, "brand": string, "price": number ($
 comfortScore/styleScore are your estimates from reviews; say so in a top-level "scoresNote" string. Output JSON only.`;
 
   try {
-    const r = await fetch("https://api.openai.com/v1/responses", {
+    const model = process.env.OPENAI_SEARCH_MODEL || "gpt-4.1-mini";
+    const call = (tools: unknown[]) => fetch(`${base}/responses`, {
       method: "POST",
       headers: { authorization: `Bearer ${key}`, "content-type": "application/json" },
-      body: JSON.stringify({ model: process.env.OPENAI_SEARCH_MODEL || "gpt-4.1-mini", tools: [{ type: "web_search_preview" }], input: prompt }),
+      body: JSON.stringify({ model, ...(tools.length ? { tools } : {}), input: prompt }),
       signal: AbortSignal.timeout(45_000),
     });
+    let r = await call([{ type: "web_search_preview" }]);
+    let provider = "OpenAI web search";
+    if (!r.ok && r.status < 500) {
+      // Proxy without the web search tool: retry on model knowledge and say so.
+      r = await call([]);
+      provider = "OpenAI model knowledge (no live web search; prices unverified)";
+    }
     if (!r.ok) return json({ error: `upstream ${r.status}`, detail: (await r.text()).slice(0, 300) }, 502);
     const data = await r.json();
     const text: string = data.output_text ?? data.output?.flatMap((o: any) => o.content ?? []).map((c: any) => c.text ?? "").join("") ?? "";
@@ -35,7 +45,7 @@ comfortScore/styleScore are your estimates from reviews; say so in a top-level "
       style: p.style || "other", comfortScore: num(p.comfortScore), styleScore: num(p.styleScore), durabilityScore: num(p.durabilityScore),
       description: p.description || undefined, source: "live (web search)", scoresNote: note,
     })).filter((p: any) => Number.isFinite(p.price) && p.price > 0);
-    return json({ products, provider: "OpenAI web search" });
+    return json({ products, provider });
   } catch (e: any) {
     return json({ error: e?.name === "TimeoutError" ? "upstream timeout" : String(e?.message ?? e) }, 502);
   }

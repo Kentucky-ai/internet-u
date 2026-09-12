@@ -15,16 +15,19 @@ Respond as JSON: {"text": string, "clarifyingQuestion": string | null}`;
 
 export default async (req: Request) => {
   if (req.method !== "POST") return json({ error: "POST only" }, 405);
-  const orKey = process.env.OPENROUTER_API_KEY, oaKey = process.env.OPENAI_API_KEY;
+  const orKey = process.env.OPENROUTER_API_KEY?.trim(), oaKey = process.env.OPENAI_API_KEY?.trim();
   if (!orKey && !oaKey) return json({ error: "no LLM key configured", fallback: true }, 503);
   const body = await req.json().catch(() => ({}));
 
-  const url = orKey ? "https://openrouter.ai/api/v1/chat/completions" : "https://api.openai.com/v1/chat/completions";
-  const model = orKey ? (process.env.OPENROUTER_MODEL || "openai/gpt-4.1-mini") : (process.env.OPENAI_CHAT_MODEL || "gpt-4.1-mini");
+  // OpenRouter when its key is set; otherwise OpenAI, honoring OPENAI_BASE_URL (Netlify AI Gateway or any proxy).
+  const useOr = !!orKey;
+  const oaBase = (process.env.OPENAI_BASE_URL || "https://api.openai.com/v1").replace(/\/$/, "");
+  const url = useOr ? "https://openrouter.ai/api/v1/chat/completions" : `${oaBase}/chat/completions`;
+  const model = useOr ? (process.env.OPENROUTER_MODEL || "openai/gpt-4.1-mini") : (process.env.OPENAI_CHAT_MODEL || "gpt-4.1-mini");
   try {
     const r = await fetch(url, {
       method: "POST",
-      headers: { authorization: `Bearer ${orKey || oaKey}`, "content-type": "application/json", ...(orKey ? { "HTTP-Referer": "https://internet-u.netlify.app", "X-Title": "Internet U" } : {}) },
+      headers: { authorization: `Bearer ${useOr ? orKey : oaKey}`, "content-type": "application/json", ...(useOr ? { "HTTP-Referer": "https://internet-u.netlify.app", "X-Title": "Internet U" } : {}) },
       body: JSON.stringify({ model, temperature: 0.3, response_format: { type: "json_object" }, messages: [{ role: "system", content: SYSTEM }, { role: "user", content: JSON.stringify(body) }] }),
       signal: AbortSignal.timeout(30_000),
     });
